@@ -1,0 +1,30 @@
+services:
+  script:
+    image: nodeservice
+    build: .
+    environment:
+      DB_CONNECT: ${DB_CONNECT}
+    ports:
+      - "3000:3000"
+  db:
+    image: postgres:17.5
+    environment:
+      postgres_password: ${DB_PASSWORD}
+      postgres_user: ${DB_USER}
+      postgres_db: ${DB_NAME}
+    ports:
+      -"5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+  search:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
+    environment:
+      discovery.type: single-node
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+volumes:
+  db-data:
+  es-data:
