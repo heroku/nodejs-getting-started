@@ -12,7 +12,7 @@ This application supports the tutorials for both the [Cedar and Fir generations]
 Make sure you have [Node.js](http://nodejs.org/) and the [Heroku CLI](https://cli.heroku.com/) installed.
 
 ```sh
-$ git clone https://github.com/heroku/node-js-getting-started.git # or clone your own fork
+$ git clone https://github.com/heroku/nodejs-getting-started.git # or clone your own fork
 $ cd node-js-getting-started
 $ npm install
 $ npm start
