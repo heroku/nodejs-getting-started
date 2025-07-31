@@ -1,5 +1,5 @@
 {
-  "name": "node-js-getting-started",
+  "name": "nodejs-getting-started",
   "private": true,
   "description": "A sample Node.js app using Express",
   "engines": {
