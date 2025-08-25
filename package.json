@@ -1,9 +1,9 @@
 {
-  "name": "node-js-getting-started",
+  "name": "nodejs-getting-started",
   "private": true,
   "description": "A sample Node.js app using Express",
   "engines": {
-    "node": "18.x || 20.x || 22.x"
+    "node": "20.x || 22.x || 24.x"
   },
   "main": "index.js",
   "scripts": {
@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "ejs": "^3.1.10",
-    "express": "^5.0.1"
+    "express": "^5.1.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0"
+    "jest": "^30.0.5"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heroku/node-js-getting-started"
+    "url": "https://github.com/heroku/nodejs-getting-started"
   },
   "keywords": [
     "node",

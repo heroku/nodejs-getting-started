@@ -1,8 +1,7 @@
 {
   "name": "Start on Heroku: Node.js",
   "description": "A barebones Node.js app using Express 4",
-  "repository": "https://github.com/heroku/node-js-getting-started",
-  "logo": "https://cdn.rawgit.com/heroku/node-js-getting-started/main/public/node.svg",
+  "repository": "https://github.com/heroku/nodejs-getting-started",
   "keywords": ["node", "express", "heroku"],
   "image": "heroku/nodejs"
 }
