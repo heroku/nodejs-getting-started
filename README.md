@@ -5,7 +5,7 @@ A barebones Node.js app using [Express](https://expressjs.com/).
 This application supports the tutorials for both the [Cedar and Fir generations](https://devcenter.heroku.com/articles/generations) of the Heroku platform. You can check them out here:
 
 * [Getting Started on Heroku with Node.js](https://devcenter.heroku.com/articles/getting-started-with-nodejs)
-* [Getting Started on Heroku Fir with Node.js](https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir)
+* [Getting Started on Heroku with Node.js (Fir generation)](https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir)
 
 ## Running Locally
 
@@ -56,7 +56,7 @@ $ heroku open
 For more information about using Node.js on Heroku, see these Dev Center articles:
 
 - [Getting Started on Heroku with Node.js](https://devcenter.heroku.com/articles/getting-started-with-nodejs)
-- [Getting Started on Heroku Fir with Node.js](https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir)
+- [Getting Started on Heroku with Node.js (Fir generation)](https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir)
 - [Heroku Node.js Support](https://devcenter.heroku.com/articles/nodejs-support)
 - [Node.js on Heroku](https://devcenter.heroku.com/categories/nodejs)
 - [Best Practices for Node.js Development](https://devcenter.heroku.com/articles/node-best-practices)
