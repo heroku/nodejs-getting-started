@@ -1,0 +1,37 @@
+WEBSITE_CONTENTS_AB_TESTING
+
+What is supposed to be on the website:
+
+- Landing page: graph with stocks levels of all blood types (NHS style)
+	Richard wants some movement of the blood filling up, fun if we have time ig
+
+- User fills in Blood Type 
+- User fills in Location
+
+- Graph of the blood stock in nearby hospitals and their waiting time
+
+- Show button to make an appointment (per hospital?)
+
+Version A: Neutral
+
+prompts:
+	Your blood type currently has a 2-day supply. Make an appointment here
+	We are looking for donors for your blood type. Make an appointment here
+	Want to donate blood? Make an appointment here
+
+
+Version B: Scarcity
+
+prompts:
+	Your blood type is in low supply! Make an appointment here
+	In 2 days we are running out of your blood type! Make an appointment here
+	The hospitals need you to donate blood! Make an appointment here
+	We need your help, our blood stocks are running low! Make an appointment here
+	
+
+
+
+
+
+random stuff:
+bar graph: https://docs.google.com/spreadsheets/d/1KZyLkIGi-4wk82QMgDoXLClN1CEOKyRN18WzfLVVdtI/edit?usp=sharing 
