@@ -27,7 +27,7 @@ function askNotificationPermission() {
 }
 
 function sendNotification() {
-    const img = "public/assets/sad_blood.jpg";
+    const img = "assets/sad_blood.jpg";
     const blood_type = "O+"
     const text = `HEY! Gimme your ${blood_type} blood!`;
     const notification = new Notification("Blood Donation Center", { body: text, icon: img });
