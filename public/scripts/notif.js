@@ -13,7 +13,7 @@ function askNotificationPermission() {
     notificationBtn.style.display = permission === "granted" ? "none" : "block";
     if (permission === "granted") {
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('js/service-worker.js')
+            navigator.serviceWorker.register('public/js/service-worker.js')
             .then(function(registration) {
                 console.log('Service Worker registered with scope:', registration.scope);
             })
@@ -27,7 +27,7 @@ function askNotificationPermission() {
 }
 
 function sendNotification() {
-    const img = "assets/sad_blood.jpg";
+    const img = "public/assets/sad_blood.jpg";
     const blood_type = "O+"
     const text = `HEY! Gimme your ${blood_type} blood!`;
     const notification = new Notification("Blood Donation Center", { body: text, icon: img });
