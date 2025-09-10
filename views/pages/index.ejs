@@ -1,73 +1,26 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="en">
+
 <head>
-  <%- include ("../partials/header.ejs") %>
+
+  <meta charset="UTF-8" />
+
+  <title>Hello, world!</title>
+
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <meta name="description" content="" />
+
 </head>
 
 <body>
 
-  <%- include ("../partials/nav.ejs") %>
-
-<div class="jumbotron text-center">
-  <div class="container">
-    <a href="/" class="lang-logo">
-      <img src="/lang-logo.png">
-    </a>
-    <h1>Getting Started on Heroku with Node.js</h1>
-    <p>This is a sample Node application deployed to Heroku. It's a reasonably simple app - but a good foundation for understanding how to get the most out of the Heroku platform.</p>
-    <a type="button" class="btn btn-lg btn-default" href="https://devcenter.heroku.com/articles/getting-started-with-nodejs"><span class="glyphicon glyphicon-flash"></span> Getting Started on Heroku with Node.js</a>
-    <a type="button" class="btn btn-lg btn-default" href="https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir"><span class="glyphicon glyphicon-flash"></span> Getting Started on Heroku Fir with Node.js</a>
-    <a type="button" class="btn btn-lg btn-primary" href="https://github.com/heroku/nodejs-getting-started"><span class="glyphicon glyphicon-download"></span> Source on GitHub</a>
-  </div>
-</div>
-<div class="container">
-  <div class="lead">
-    To deploy your own copy, and learn the fundamentals of the Heroku platform, head over to either of the following tutorials:
-    <ul>
-      <li><a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs" class="alert-link">Getting Started on Heroku with Node.js</a></li>
-      <li><a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir" class="alert-link">Getting Started on Heroku Fir with Node.js</a></li>
-    </ul>
-  </div>
-  <hr>
-  <div class="row">
-    <div class="col-md-6">
-      <h3><span class="glyphicon glyphicon-info-sign"></span> How this sample app works</h3>
-      <ul>
-        <li>This app was deployed to Heroku using Git.</li>
-        <li>When Heroku received the source code, it fetched all the dependencies in the <a href="https://github.com/heroku/nodejs-getting-started/blob/main/package.json">package.json</a>, creating a deployable build artifact.</li>
-        <li>The platform then spins up a dyno, a lightweight container that provides an isolated environment in which the build artifact can be mounted and executed.</li>
-        <li>You can scale your app, manage it, and deploy over <a href="https://addons.heroku.com/">150 add-on services</a>, from the Dashboard or CLI.</li>
-      </ul>
-    </div>
-    <div class="col-md-6">
-      <h3><span class="glyphicon glyphicon-link"></span> Next Steps</h3>
-      <ul>
-        <li>If you are following the <a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs" class="alert-link">Getting Started on Heroku with Node.js</a> or
-          <a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir" class="alert-link">Getting Started on Heroku Fir with Node.js</a> guide,
-          then please head back to the tutorial and follow the next steps!</li>
-      </ul>
-      <h3><span class="glyphicon glyphicon-link"></span> Helpful Links</h3>
-      <ul>
-        <li><a href="https://www.heroku.com/home">Heroku</a></li>
-        <li><a href="https://devcenter.heroku.com/">Heroku Dev Center</a></li>
-        <li><a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs">Getting Started on Heroku with Node.js</a></li>
-        <li><a href="https://devcenter.heroku.com/articles/getting-started-with-nodejs-fir">Getting Started on Heroku Fir with Node.js</a></li>
-        <li><a href="https://devcenter.heroku.com/articles/deploying-nodejs">Deploying Node Apps on Heroku</a></li>
-      </ul>
-    </div>
-  </div> <!-- row -->
-  <div>
-
-  </div>
-  <div class="row" style="margin-top:1em">
-    <div class="col-md-12">
-      <p class="alert alert-info" role="alert">
-        Please do work through the Getting Started guide, even if you do know how to build such an application.  The guide covers the basics of working with Heroku, and will familiarize you with all the concepts you need in order to build and deploy your own apps.
-      </p>
-    </div>
-  </div>
-</div>
-
+  <h1>Notifications</h1>
+  <button id="enable" onclick="askNotificationPermission()">Enable notifications</button>
 
 </body>
+<footer>
+  <script src = "js/notif.js"></script>
+</footer>
 </html>
