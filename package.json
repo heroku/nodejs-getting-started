@@ -24,7 +24,8 @@
   "keywords": [
     "node",
     "heroku",
-    "express"
+    "express",
+    "web-push"
   ],
   "license": "MIT"
 }
