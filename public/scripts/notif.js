@@ -13,7 +13,7 @@ function askNotificationPermission() {
     notificationBtn.style.display = permission === "granted" ? "none" : "block";
     if (permission === "granted") {
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('public/js/service-worker.js')
+            navigator.serviceWorker.register('scripts/service-worker.js')
             .then(function(registration) {
                 console.log('Service Worker registered with scope:', registration.scope);
             })
