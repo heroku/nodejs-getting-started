@@ -1,36 +1,57 @@
-const express = require('express')
-const path = require('path')
+const express = require('express');
+const path = require('path');
 
-const port = process.env.PORT || 5006
+const port = process.env.PORT || 5006;
+const app = express();
 
-const app = express()
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(express.static(path.join(__dirname, 'public')))
-app.set('views', path.join(__dirname, 'views'))
-app.set('view engine', 'ejs')
+// View engine
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'ejs');
 
+// Home route
 app.get('/', (req, res) => {
-  console.log(`Rendering 'pages/index' for route '/'`)
-  res.render('pages/index')
-})
+  console.log(`Rendering 'pages/index' for route '/'`);
+  res.render('pages/index');
+});
 
+/* ================================
+   WhatsApp Webhook Verification
+   ================================ */
+app.get('/webhook', (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('✅ Webhook verified successfully');
+    return res.status(200).send(challenge);
+  } else {
+    console.log('❌ Webhook verification failed');
+    return res.sendStatus(403);
+  }
+});
+
+// Start server
 const server = app.listen(port, () => {
-  console.log(`Listening on ${port}`)
-})
+  console.log(`Listening on ${port}`);
+});
 
-// The number of seconds an idle Keep-Alive connection is kept open. This should be greater than the Heroku Router's
-// Keep-Alive idle timeout of 90 seconds:
-// - to ensure that the closing of idle connections is always initiated by the router and not the Node.js server
-// - to prevent a race condition if the router sends a request to the app just as Node.js is closing the connection
-// https://devcenter.heroku.com/articles/http-routing#keepalives
-// https://nodejs.org/api/http.html#serverkeepalivetimeout
-server.keepAliveTimeout = 95 * 1000
+// Keep-alive config (important for Render/Heroku)
+server.keepAliveTimeout = 95 * 1000;
 
+// Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM signal received: gracefully shutting down')
+  console.log('SIGTERM signal received: gracefully shutting down');
   if (server) {
     server.close(() => {
-      console.log('HTTP server closed')
-    })
+      console.log('HTTP server closed');
+    });
   }
-})
+});
