@@ -1,3 +1,40 @@
+const express = require('express');
+const path = require('path');
+
+const app = express();
+const port = process.env.PORT || 5006;
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Static & views
+app.use(express.static(path.join(__dirname, 'public')));
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'ejs');
+
+// Home route
+app.get('/', (req, res) => {
+  res.send('WhatsApp Webhook is running ✅');
+});
+
+// 🔐 Webhook verification (Meta Step)
+app.get('/webhook', (req, res) => {
+  const VERIFY_TOKEN = 'my_verify_token'; // must match Meta token
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('Webhook verified');
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
+
+// 📩 Receive WhatsApp messages
 app.post('/webhook', async (req, res) => {
   console.log('Incoming webhook:', JSON.stringify(req.body, null, 2));
 
@@ -12,7 +49,7 @@ app.post('/webhook', async (req, res) => {
 
     console.log(`Message from ${from}: ${text}`);
 
-    // Send auto-reply
+    // Auto-reply
     await fetch(
       `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
       {
@@ -24,7 +61,7 @@ app.post('/webhook', async (req, res) => {
         body: JSON.stringify({
           messaging_product: 'whatsapp',
           to: from,
-          text: { body: '👋 Hello! Your message has been received.' }
+          text: { body: '👋 Hello! Your message has been received successfully.' }
         })
       }
     );
@@ -32,3 +69,10 @@ app.post('/webhook', async (req, res) => {
 
   res.sendStatus(200);
 });
+
+// Start server
+const server = app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+server.keepAliveTimeout = 95 * 1000;
