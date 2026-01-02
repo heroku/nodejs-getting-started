@@ -1,145 +1,76 @@
 const express = require('express');
+const axios = require('axios');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-// ====== Middleware ======
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// ====== Root check ======
-app.get('/', (req, res) => {
-  res.send('Bala Milk Store WhatsApp Bot is running ✅');
+const PORT = process.env.PORT || 10000;
+
+// ENV variables (must be set in Render)
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+
+// Webhook verification
+app.get('/webhook', (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
 });
 
-// ====== WhatsApp Webhook ======
+// Receive messages
 app.post('/webhook', async (req, res) => {
   try {
     const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const messages = value?.messages?.[0];
+    const change = entry?.changes?.[0];
+    const message = change?.value?.messages?.[0];
 
-    // If no message, return OK
-    if (!messages) {
-      return res.sendStatus(200);
-    }
+    if (!message) return res.sendStatus(200);
 
-    const from = messages.from; // customer WhatsApp number
-    const text = messages.text?.body?.trim();
+    const from = message.from;
+    const text = message.text?.body;
 
-    console.log('From:', from);
-    console.log('Message:', text);
+    console.log("From:", from);
+    console.log("Message:", text);
 
-    let reply = '';
+    let reply = "Welcome to Bala Milk Store 🥛\n\nReply:\n1️⃣ Buffalo Milk\n2️⃣ Cow Milk\n3️⃣ Paneer\n4️⃣ Ghee\n5️⃣ Subscription\n6️⃣ Talk to Owner";
 
-    switch (text) {
-      case '1':
-        reply = `🥛 *Buffalo Milk*
-Price: ₹100 / Litre
-Fresh & Pure
+    if (text === "1") reply = "🥛 Buffalo Milk – ₹100/L";
+    else if (text === "2") reply = "🐄 Cow Milk – ₹120/L";
+    else if (text === "3") reply = "🧀 Paneer – ₹600/Kg";
+    else if (text === "4") reply = "🧈 Ghee – ₹1000/Kg";
+    else if (text === "5") reply = "📅 Daily Milk Subscription – Please share quantity";
+    else if (text === "6") reply = "📞 Owner will contact you shortly";
 
-Reply *ORDER* to place order`;
-        break;
-
-      case '2':
-        reply = `🥛 *Cow Milk*
-Price: ₹120 / Litre
-Healthy & Fresh
-
-Reply *ORDER* to place order`;
-        break;
-
-      case '3':
-        reply = `🧀 *Paneer*
-Price: ₹600 / Kg
-Fresh Homemade Paneer
-
-Reply *ORDER* to place order`;
-        break;
-
-      case '4':
-        reply = `🧈 *Ghee*
-Price: ₹1000 / Kg
-Pure Desi Ghee
-
-Reply *ORDER* to place order`;
-        break;
-
-      case '5':
-        reply = `📦 *Daily Milk Subscription*
-✔ Morning delivery
-✔ Monthly billing
-
-Reply *SUBSCRIBE* to continue`;
-        break;
-
-      case '6':
-        reply = `📞 *Talk to Owner*
-Please call: 9XXXXXXXXX`;
-        break;
-
-      case 'ORDER':
-        reply = `✅ Thank you!
-Please reply with:
-Product name
-Quantity
-Delivery address`;
-        break;
-
-      case 'SUBSCRIBE':
-        reply = `📝 Subscription details:
-Milk type:
-Quantity per day:
-Address:`;
-        break;
-
-      default:
-        reply = `Welcome to *Bala Milk Store* 🥛
-
-Please choose an option:
-1️⃣ Buffalo Milk – ₹100/L
-2️⃣ Cow Milk – ₹120/L
-3️⃣ Paneer – ₹600/Kg
-4️⃣ Ghee – ₹1000/Kg
-5️⃣ Daily Milk Subscription
-6️⃣ Talk to Owner
-
-Reply with the option number.`;
-    }
-
-    // ====== Send reply to WhatsApp ======
-    await sendWhatsAppMessage(from, reply);
+    // SEND MESSAGE TO WHATSAPP
+    await axios.post(
+      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: from,
+        text: { body: reply }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
     res.sendStatus(200);
-  } catch (error) {
-    console.error('Webhook error:', error);
+  } catch (err) {
+    console.error("Error:", err.response?.data || err.message);
     res.sendStatus(500);
   }
 });
 
-// ====== Send message function ======
-async function sendWhatsAppMessage(to, message) {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.PHONE_NUMBER_ID;
-
-  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
-
-  await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: to,
-      text: { body: message }
-    })
-  });
-}
-
-// ====== Start Server ======
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
