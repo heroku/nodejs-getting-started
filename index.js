@@ -1,121 +1,145 @@
+const express = require('express');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ====== Middleware ======
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ====== Root check ======
+app.get('/', (req, res) => {
+  res.send('Bala Milk Store WhatsApp Bot is running ✅');
+});
+
+// ====== WhatsApp Webhook ======
 app.post('/webhook', async (req, res) => {
   try {
     const entry = req.body.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
-    const messages = value?.messages;
+    const messages = value?.messages?.[0];
 
+    // If no message, return OK
     if (!messages) {
       return res.sendStatus(200);
     }
 
-    const from = messages[0].from;
-    const text = messages[0].text?.body?.trim();
+    const from = messages.from; // customer WhatsApp number
+    const text = messages.text?.body?.trim();
+
+    console.log('From:', from);
+    console.log('Message:', text);
 
     let reply = '';
 
-    // Greeting / Menu
-    if (!text || ['hi', 'hello', 'menu'].includes(text.toLowerCase())) {
-      reply =
-        `Welcome to *Bala Milk Store* 🥛\n\n` +
-        `Please choose an option:\n` +
-        `1️⃣ Buffalo Milk – ₹100/L\n` +
-        `2️⃣ Cow Milk – ₹120/L\n` +
-        `3️⃣ Paneer – ₹600/Kg\n` +
-        `4️⃣ Ghee – ₹1000/Kg\n` +
-        `5️⃣ Daily Milk Subscription\n` +
-        `6️⃣ Talk to Owner\n\n` +
-        `Reply with the option number.`;
+    switch (text) {
+      case '1':
+        reply = `🥛 *Buffalo Milk*
+Price: ₹100 / Litre
+Fresh & Pure
+
+Reply *ORDER* to place order`;
+        break;
+
+      case '2':
+        reply = `🥛 *Cow Milk*
+Price: ₹120 / Litre
+Healthy & Fresh
+
+Reply *ORDER* to place order`;
+        break;
+
+      case '3':
+        reply = `🧀 *Paneer*
+Price: ₹600 / Kg
+Fresh Homemade Paneer
+
+Reply *ORDER* to place order`;
+        break;
+
+      case '4':
+        reply = `🧈 *Ghee*
+Price: ₹1000 / Kg
+Pure Desi Ghee
+
+Reply *ORDER* to place order`;
+        break;
+
+      case '5':
+        reply = `📦 *Daily Milk Subscription*
+✔ Morning delivery
+✔ Monthly billing
+
+Reply *SUBSCRIBE* to continue`;
+        break;
+
+      case '6':
+        reply = `📞 *Talk to Owner*
+Please call: 9XXXXXXXXX`;
+        break;
+
+      case 'ORDER':
+        reply = `✅ Thank you!
+Please reply with:
+Product name
+Quantity
+Delivery address`;
+        break;
+
+      case 'SUBSCRIBE':
+        reply = `📝 Subscription details:
+Milk type:
+Quantity per day:
+Address:`;
+        break;
+
+      default:
+        reply = `Welcome to *Bala Milk Store* 🥛
+
+Please choose an option:
+1️⃣ Buffalo Milk – ₹100/L
+2️⃣ Cow Milk – ₹120/L
+3️⃣ Paneer – ₹600/Kg
+4️⃣ Ghee – ₹1000/Kg
+5️⃣ Daily Milk Subscription
+6️⃣ Talk to Owner
+
+Reply with the option number.`;
     }
 
-    // Option 1 - Buffalo Milk
-    else if (text === '1') {
-      reply =
-        `🥛 *Buffalo Milk*\n\n` +
-        `Price: ₹100 per liter\n` +
-        `Fresh & Pure\n\n` +
-        `Reply with quantity in liters (Example: 2L)`;
-    }
-
-    // Option 2 - Cow Milk
-    else if (text === '2') {
-      reply =
-        `🥛 *Cow Milk*\n\n` +
-        `Price: ₹120 per liter\n` +
-        `Healthy & Natural\n\n` +
-        `Reply with quantity in liters (Example: 1L)`;
-    }
-
-    // Option 3 - Paneer
-    else if (text === '3') {
-      reply =
-        `🧀 *Paneer*\n\n` +
-        `Price: ₹600 per Kg\n` +
-        `Fresh homemade paneer\n\n` +
-        `Reply with quantity (Example: 0.5 Kg)`;
-    }
-
-    // Option 4 - Ghee
-    else if (text === '4') {
-      reply =
-        `🫙 *Pure Ghee*\n\n` +
-        `Price: ₹1000 per Kg\n` +
-        `Traditional & aromatic\n\n` +
-        `Reply with quantity (Example: 1 Kg)`;
-    }
-
-    // Option 5 - Subscription
-    else if (text === '5') {
-      reply =
-        `📅 *Daily Milk Subscription*\n\n` +
-        `✔ Morning delivery\n` +
-        `✔ Monthly billing\n` +
-        `✔ Fresh every day\n\n` +
-        `Reply *YES* to subscribe or *NO* to cancel.`;
-    }
-
-    // Option 6 - Talk to Owner
-    else if (text === '6') {
-      reply =
-        `📞 *Talk to Owner*\n\n` +
-        `Name: Bala\n` +
-        `Mobile: +91-XXXXXXXXXX\n\n` +
-        `Call anytime between 6 AM – 10 PM`;
-    }
-
-    // Invalid input
-    else {
-      reply =
-        `❌ Invalid option\n\n` +
-        `Please reply with:\n` +
-        `1️⃣ Buffalo Milk\n` +
-        `2️⃣ Cow Milk\n` +
-        `3️⃣ Paneer\n` +
-        `4️⃣ Ghee\n` +
-        `5️⃣ Subscription\n` +
-        `6️⃣ Talk to Owner`;
-    }
-
-    // Send WhatsApp message
-    await fetch(
-      `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.WHATSAPP_TOKEN}`
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: from,
-          text: { body: reply }
-        })
-      }
-    );
+    // ====== Send reply to WhatsApp ======
+    await sendWhatsAppMessage(from, reply);
 
     res.sendStatus(200);
-  } catch (err) {
-    console.error('Webhook Error:', err);
+  } catch (error) {
+    console.error('Webhook error:', error);
     res.sendStatus(500);
   }
+});
+
+// ====== Send message function ======
+async function sendWhatsAppMessage(to, message) {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneNumberId = process.env.PHONE_NUMBER_ID;
+
+  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: to,
+      text: { body: message }
+    })
+  });
+}
+
+// ====== Start Server ======
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
 });
