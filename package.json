@@ -10,9 +10,10 @@
     "start": "node index.js",
     "test": "jest"
   },
-  "dependencies": {
-    "ejs": "^3.1.10",
-    "express": "^5.2.1"
+ "dependencies": {
+  "ejs": "^3.1.9",
+  "express": "^5.0.1",
+  "axios": "^1.6.8"
   },
   "devDependencies": {
     "jest": "^30.2.0"
