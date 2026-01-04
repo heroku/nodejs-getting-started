@@ -7,163 +7,188 @@ app.use(express.json());
 const sessions = {};
 
 const PRODUCTS = {
-  "500ml": 50,
-  "1L": 90,
-  "2L": 170
+  milk: {
+    name: "Milk",
+    quantities: {
+      "1": { label: "500ml", price: 50 },
+      "2": { label: "1L", price: 90 },
+      "3": { label: "2L", price: 170 }
+    }
+  }
 };
 
 /* =========================
    WEBHOOK VERIFY
 ========================= */
 app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
+  if (
+    req.query["hub.mode"] === "subscribe" &&
+    req.query["hub.verify_token"] === process.env.VERIFY_TOKEN
+  ) {
+    return res.status(200).send(req.query["hub.challenge"]);
   }
   res.sendStatus(403);
 });
 
 /* =========================
-   WEBHOOK RECEIVE MESSAGE
+   WEBHOOK RECEIVE
 ========================= */
 app.post("/webhook", async (req, res) => {
   try {
-    const entry = req.body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
-    const messageObj = value?.messages?.[0];
+    const msg =
+      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const contact =
+      req.body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
 
-    if (!messageObj) return res.sendStatus(200);
+    if (!msg) return res.sendStatus(200);
 
-    const from = messageObj.from;
-    const text = messageObj.text?.body?.toLowerCase();
+    const from = msg.from;
+    const text = msg.text?.body?.toLowerCase();
+    const name = contact?.profile?.name || "";
 
     if (!sessions[from]) {
-      sessions[from] = { step: "START" };
+      sessions[from] = { step: "START", name };
     }
 
     let reply = "";
 
+    /* =========================
+       FLOW
+    ========================= */
     switch (sessions[from].step) {
 
-      /* ===== START ===== */
+      /* ---- START ---- */
       case "START":
-        reply =
-          "🥛 *Welcome to Milk Service*\n\n" +
-          "Select Quantity:\n" +
-          "1️⃣ 500ml – ₹50\n" +
-          "2️⃣ 1L – ₹90\n" +
-          "3️⃣ 2L – ₹170\n\n" +
-          "Reply with 1 / 2 / 3";
-        sessions[from].step = "QTY";
+        if (text === "hi" || text === "hello") {
+          reply =
+            "👋 Welcome to *Bala Milk Store* 🥛\n\n" +
+            "Please choose a product:\n" +
+            "1️⃣ Milk\n" +
+            "2️⃣ Enquiry only";
+          sessions[from].step = "PRODUCT";
+        }
         break;
 
-      /* ===== QUANTITY ===== */
+      /* ---- PRODUCT ---- */
+      case "PRODUCT":
+        if (text === "1") {
+          sessions[from].product = "Milk";
+          reply =
+            "Select Quantity:\n\n" +
+            "1️⃣ 500ml – ₹50\n" +
+            "2️⃣ 1L – ₹90\n" +
+            "3️⃣ 2L – ₹170";
+          sessions[from].step = "QTY";
+        } else if (text === "2") {
+          await saveToSheet({
+            phone: from,
+            name,
+            type: "Enquiry"
+          });
+          reply = "📞 Thank you! We will contact you shortly.";
+          delete sessions[from];
+        } else {
+          reply = "❌ Please reply 1 or 2";
+        }
+        break;
+
+      /* ---- QUANTITY ---- */
       case "QTY":
-        if (text === "1") sessions[from].quantity = "500ml";
-        else if (text === "2") sessions[from].quantity = "1L";
-        else if (text === "3") sessions[from].quantity = "2L";
-        else {
-          reply = "❌ Please reply 1 / 2 / 3";
+        const qty = PRODUCTS.milk.quantities[text];
+        if (!qty) {
+          reply = "❌ Please select 1 / 2 / 3";
           break;
         }
-
-        sessions[from].price = PRODUCTS[sessions[from].quantity];
-        reply = "📍 Please share delivery address.";
+        sessions[from].quantity = qty.label;
+        sessions[from].price = qty.price;
+        reply =
+          "📍 Please type your delivery address\n" +
+          "OR share your *current location*.";
         sessions[from].step = "ADDRESS";
         break;
 
-      /* ===== ADDRESS ===== */
+      /* ---- ADDRESS ---- */
       case "ADDRESS":
-        sessions[from].address = text;
-        reply =
-          "📅 Select start date:\n\n" +
-          "1️⃣ Today\n" +
-          "2️⃣ Tomorrow\n\n" +
-          "Reply 1 or 2";
-        sessions[from].step = "DATE";
-        break;
-
-      /* ===== DATE ===== */
-      case "DATE":
-        if (text === "1") sessions[from].startDate = "Today";
-        else if (text === "2") sessions[from].startDate = "Tomorrow";
-        else {
-          reply = "❌ Reply 1 or 2";
-          break;
-        }
-
+        sessions[from].address = text || "Location Shared";
         reply =
           "⏰ Delivery Time:\n\n" +
           "1️⃣ Morning\n" +
-          "2️⃣ Evening\n\n" +
-          "Reply 1 or 2";
+          "2️⃣ Evening";
         sessions[from].step = "TIME";
         break;
 
-      /* ===== TIME ===== */
+      /* ---- TIME ---- */
       case "TIME":
-        if (text === "1") sessions[from].deliveryTime = "Morning";
-        else if (text === "2") sessions[from].deliveryTime = "Evening";
+        if (text === "1") sessions[from].time = "Morning";
+        else if (text === "2") sessions[from].time = "Evening";
         else {
-          reply = "❌ Reply 1 or 2";
+          reply = "❌ Please reply 1 or 2";
           break;
         }
 
         reply =
-          `💰 *Payment Details*\n\n` +
-          `Amount: ₹${sessions[from].price}\n` +
-          `UPI ID: 8121893882-2@ybl\n\n` +
-          `After payment, please send *payment screenshot*.`;
-        sessions[from].step = "WAIT_PAYMENT";
+          "💳 Payment Method:\n\n" +
+          "1️⃣ Cash on Delivery\n" +
+          "2️⃣ UPI Payment";
+        sessions[from].step = "PAYMENT_METHOD";
         break;
 
-      /* ===== PAYMENT SCREENSHOT ===== */
-      case "WAIT_PAYMENT":
-        if (messageObj.image) {
-          const imageId = messageObj.image.id;
-
-          await axios.post(process.env.GOOGLE_SHEET_URL, {
-            phone: from,
-            product: "Milk",
-            quantity: sessions[from].quantity,
-            price: sessions[from].price,
-            address: sessions[from].address,
-            startDate: sessions[from].startDate,
-            deliveryTime: sessions[from].deliveryTime,
-            paymentScreenshot: imageId
-          });
-
+      /* ---- PAYMENT METHOD ---- */
+      case "PAYMENT_METHOD":
+        if (text === "1") {
+          sessions[from].payment = "Cash on Delivery";
+          await confirmOrder(from, name, "Payment");
+          reply = "✅ Order confirmed!\nPayment: Cash on Delivery";
+          delete sessions[from];
+        } else if (text === "2") {
+          sessions[from].payment = "UPI";
           reply =
-            "✅ *Payment Received!*\n\n" +
-            "Your order is confirmed 🙏\n" +
-            "Thank you for choosing us.";
+            "💰 Amount: ₹" + sessions[from].price + "\n\n" +
+            "UPI ID:\n8121893882-2@ybl\n\n" +
+            "📸 After payment, send screenshot.";
+          sessions[from].step = "WAIT_SCREENSHOT";
+        } else {
+          reply = "❌ Please reply 1 or 2";
+        }
+        break;
 
+      /* ---- SCREENSHOT ---- */
+      case "WAIT_SCREENSHOT":
+        if (msg.image) {
+          await confirmOrder(from, name, "Payment", msg.image.id);
+          reply = "✅ Payment received! Order confirmed 🙏";
           delete sessions[from];
         } else {
-          reply = "📸 Please send payment screenshot to confirm order.";
+          reply = "📸 Please send payment screenshot.";
         }
         break;
     }
 
-    if (reply) {
-      await sendMessage(from, reply);
-    }
-
+    if (reply) await sendMessage(from, reply);
     res.sendStatus(200);
 
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     res.sendStatus(500);
   }
 });
 
 /* =========================
-   SEND MESSAGE FUNCTION
+   HELPERS
 ========================= */
+async function confirmOrder(phone, name, type, screenshot = "") {
+  await saveToSheet({
+    phone,
+    name,
+    type,
+    screenshot
+  });
+}
+
+async function saveToSheet(data) {
+  await axios.post(process.env.GOOGLE_SHEET_URL, data);
+}
+
 async function sendMessage(to, text) {
   await axios.post(
     `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
@@ -181,6 +206,4 @@ async function sendMessage(to, text) {
   );
 }
 
-/* ========================= */
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+app.listen(process.env.PORT || 3000);
