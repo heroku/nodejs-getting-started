@@ -1,46 +1,16 @@
-const message = text.toLowerCase().trim();
-const from = phone;
-
-if (!userState[from]) {
-  userState[from] = {};
-}
-
-/* STEP A: MENU SELECTION */
-if (!userState[from].step) {
-  if (message === '1') {
-    userState[from] = { step: 'qty', product: 'Buffalo Milk', price: 100 };
-    reply = '🥛 Buffalo Milk selected.\nHow many liters?';
-  } 
-  else if (message === '2') {
-    userState[from] = { step: 'qty', product: 'Cow Milk', price: 120 };
-    reply = '🥛 Cow Milk selected.\nHow many liters?';
-  }
-  else {
-    reply = `Welcome to Bala Milk Store 🥛
-1️⃣ Buffalo Milk – ₹100/L
-2️⃣ Cow Milk – ₹120/L
-3️⃣ Paneer – ₹600/Kg
-4️⃣ Ghee – ₹1000/Kg
-Reply with option number.`;
-  }
-}
-
-/* STEP B: QUANTITY */
-else if (userState[from].step === 'qty') {
-  const qty = parseInt(message);
-  if (isNaN(qty) || qty <= 0) {
-    reply = 'Please enter a valid quantity.';
-  } else {
-    const total = qty * userState[from].price;
-
-    reply = `✅ Order Confirmed
-Product: ${userState[from].product}
-Quantity: ${qty}
-Total: ₹${total}
-
-Thank you! 🙏`;
-
-    // store order later (Google Sheets)
-    userState[from] = {}; // reset
+{
+  "name": "bala-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp Cloud API bot for Bala Milk Store",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "express": "^4.18.2"
   }
 }
