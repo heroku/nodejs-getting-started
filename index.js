@@ -7,14 +7,14 @@ app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 10000;
 
-/* ================= CONFIG ================= */
+/* ========== CONFIG ========== */
 
 const TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_ID = process.env.PHONE_NUMBER_ID;
-const SHEET_URL = process.env.SHEET_WEBHOOK; // Google Apps Script URL
+const SHEET_URL = process.env.SHEET_WEBHOOK;
 const OWNER_UPI = "8121893882-2@ybl";
 
-/* ================= SESSION ================= */
+/* ========== SESSION STORE ========== */
 
 const sessions = {};
 
@@ -26,7 +26,7 @@ function newSession(phone) {
   };
 }
 
-/* ================= PRODUCTS ================= */
+/* ========== PRODUCTS ========== */
 
 const PRODUCTS = {
   "1": { name: "Buffalo Milk", price: 100 },
@@ -37,7 +37,7 @@ const PRODUCTS = {
   "6": { name: "Talk to Owner" },
 };
 
-/* ================= WHATSAPP SEND ================= */
+/* ========== SEND MESSAGE ========== */
 
 async function sendMessage(to, text) {
   await axios.post(
@@ -56,16 +56,16 @@ async function sendMessage(to, text) {
   );
 }
 
-/* ================= GOOGLE SHEET ================= */
+/* ========== SAVE TO SHEET ========== */
 
 async function saveToSheet(data) {
   await axios.post(SHEET_URL, data);
 }
 
-/* ================= MENU ================= */
+/* ========== MENU TEXT ========== */
 
 function menuText() {
-  return `🥛 Welcome to *Bala Milk Store*
+  return `🥛 *Welcome to Bala Milk Store*
 
 Please choose an option:
 1️⃣ Buffalo Milk – ₹100/L
@@ -78,15 +78,16 @@ Please choose an option:
 Reply with option number.`;
 }
 
-/* ================= WEBHOOK ================= */
+/* ========== WEBHOOK ========== */
 
 app.post("/webhook", async (req, res) => {
-  const entry = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  if (!entry) return res.sendStatus(200);
+  const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  if (!msg) return res.sendStatus(200);
 
-  const from = entry.from;
-  const text = entry.text?.body?.trim();
-  const image = entry.image;
+  const from = msg.from;
+  const text = msg.text?.body?.trim();
+  const location = msg.location;
+  const image = msg.image;
 
   if (!sessions[from]) {
     sessions[from] = newSession(from);
@@ -99,7 +100,7 @@ app.post("/webhook", async (req, res) => {
   /* ===== MENU ===== */
   if (s.step === "MENU") {
     if (!PRODUCTS[text]) {
-      await sendMessage(from, "❌ Invalid option. Please choose again.\n\n" + menuText());
+      await sendMessage(from, "❌ Invalid option.\n\n" + menuText());
       return res.sendStatus(200);
     }
 
@@ -115,7 +116,12 @@ app.post("/webhook", async (req, res) => {
 
     await sendMessage(
       from,
-      `🧾 *${s.product}*\n\nChoose quantity:\n1️⃣ 500ml\n2️⃣ 1 L\n3️⃣ 2 L`
+      `🧾 *${s.product}*
+
+Choose quantity:
+1️⃣ 500ml – ₹${s.unitPrice * 0.5}
+2️⃣ 1 L – ₹${s.unitPrice}
+3️⃣ 2 L – ₹${s.unitPrice * 2}`
     );
     return res.sendStatus(200);
   }
@@ -127,20 +133,34 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    s.quantity =
-      text === "1" ? "500ml" : text === "2" ? "1L" : "2L";
+    const map = {
+      "1": { qty: "500ml", mul: 0.5 },
+      "2": { qty: "1L", mul: 1 },
+      "3": { qty: "2L", mul: 2 },
+    };
 
-    const multiplier = text === "1" ? 0.5 : text === "2" ? 1 : 2;
-    s.price = s.unitPrice * multiplier;
-
+    s.quantity = map[text].qty;
+    s.price = s.unitPrice * map[text].mul;
     s.step = "ADDRESS";
-    await sendMessage(from, "📍 Please send your delivery address.");
+
+    await sendMessage(
+      from,
+      `📍 *Delivery Address*
+
+1️⃣ Send live location
+2️⃣ Type address manually`
+    );
     return res.sendStatus(200);
   }
 
   /* ===== ADDRESS ===== */
   if (s.step === "ADDRESS") {
-    s.address = text;
+    if (location) {
+      s.address = `Live Location: ${location.latitude}, ${location.longitude}`;
+    } else {
+      s.address = text;
+    }
+
     s.step = "SLOT";
     await sendMessage(from, "🚚 Choose delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
     return res.sendStatus(200);
@@ -162,57 +182,91 @@ app.post("/webhook", async (req, res) => {
   /* ===== TIME ===== */
   if (s.step === "TIME") {
     s.time = text;
-    s.step = "PAYMENT";
+    s.step = "PAYMENT_CHOICE";
 
     await sendMessage(
       from,
-      `💰 *Payment Options*\n\nUPI ID:\n${OWNER_UPI}\n\n1️⃣ Send payment screenshot\n2️⃣ Cash on Delivery`
+      `💰 Choose payment method:
+1️⃣ UPI
+2️⃣ Cash on Delivery`
     );
     return res.sendStatus(200);
   }
 
-  /* ===== PAYMENT ===== */
-  if (s.step === "PAYMENT") {
-    if (text === "2") {
-      s.paymentMethod = "Cash on Delivery";
-    }
-
-    if (image) {
+  /* ===== PAYMENT CHOICE ===== */
+  if (s.step === "PAYMENT_CHOICE") {
+    if (text === "1") {
       s.paymentMethod = "UPI";
-      s.screenshot = image.id;
-    }
+      s.step = "UPI_SCREENSHOT";
+      await sendMessage(
+        from,
+        `📲 Pay using UPI:
 
-    if (!s.paymentMethod) {
-      await sendMessage(from, "❌ Please choose payment option");
+${OWNER_UPI}
+
+After payment, please send screenshot.`
+      );
       return res.sendStatus(200);
     }
 
-    await saveToSheet({
-      orderId: s.orderId,
-      date: new Date().toLocaleString(),
-      phone: s.phone,
-      product: s.product,
-      quantity: s.quantity,
-      price: s.price,
-      address: s.address,
-      delivery: `${s.slot} ${s.time}`,
-      payment: s.paymentMethod,
-      screenshot: s.screenshot || "",
-    });
+    if (text === "2") {
+      s.paymentMethod = "Cash on Delivery";
+      await finalizeOrder(from, s);
+      return res.sendStatus(200);
+    }
 
-    await sendMessage(
-      from,
-      `✅ *Order Confirmed!*\n\n🧾 Order ID: ${s.orderId}\n🥛 ${s.product}\n📦 ${s.quantity}\n💰 ₹${s.price}\n🚚 ${s.slot} ${s.time}\n\n🙏 Thank you for choosing Bala Milk Store`
-    );
+    await sendMessage(from, "❌ Choose 1 or 2");
+    return res.sendStatus(200);
+  }
 
-    delete sessions[from]; // 🔥 IMPORTANT
+  /* ===== UPI SCREENSHOT ===== */
+  if (s.step === "UPI_SCREENSHOT") {
+    if (!image) {
+      await sendMessage(from, "❌ Please send payment screenshot.");
+      return res.sendStatus(200);
+    }
+
+    s.screenshot = image.id;
+    await finalizeOrder(from, s);
     return res.sendStatus(200);
   }
 
   res.sendStatus(200);
 });
 
-/* ================= VERIFY ================= */
+/* ========== FINALIZE ORDER ========== */
+
+async function finalizeOrder(from, s) {
+  await saveToSheet({
+    orderId: s.orderId,
+    date: new Date().toLocaleString(),
+    phone: s.phone,
+    product: s.product,
+    quantity: s.quantity,
+    price: s.price,
+    address: s.address,
+    delivery: `${s.slot} ${s.time}`,
+    payment: s.paymentMethod,
+    screenshot: s.screenshot || "",
+  });
+
+  await sendMessage(
+    from,
+    `✅ *Order Confirmed!*
+
+🧾 Order ID: ${s.orderId}
+🥛 ${s.product}
+📦 ${s.quantity}
+💰 ₹${s.price}
+🚚 ${s.slot} ${s.time}
+
+🙏 Thank you for choosing *Bala Milk Store*`
+  );
+
+  delete sessions[from];
+}
+
+/* ========== VERIFY ========== */
 
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === process.env.VERIFY_TOKEN) {
@@ -221,7 +275,7 @@ app.get("/webhook", (req, res) => {
   res.sendStatus(403);
 });
 
-/* ================= START ================= */
+/* ========== START ========== */
 
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
