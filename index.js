@@ -15,14 +15,11 @@ const sessions = {};
 // WEBHOOK VERIFY
 // ===============================
 app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
+  if (
+    req.query["hub.mode"] === "subscribe" &&
+    req.query["hub.verify_token"] === process.env.VERIFY_TOKEN
+  ) {
+    return res.status(200).send(req.query["hub.challenge"]);
   }
   res.sendStatus(403);
 });
@@ -37,10 +34,9 @@ app.post("/webhook", async (req, res) => {
 
     const from = message.from;
     const text = message.text?.body?.trim();
+    const location = message.location;
 
-    if (!sessions[from]) {
-      sessions[from] = { step: "MENU" };
-    }
+    if (!sessions[from]) sessions[from] = { step: "MENU" };
 
     let reply = "";
 
@@ -48,25 +44,26 @@ app.post("/webhook", async (req, res) => {
     // STEP 1: MENU
     // ===============================
     if (sessions[from].step === "MENU") {
-      if (["1", "2", "3", "4", "5", "6"].includes(text)) {
-        const products = {
-          "1": "Buffalo Milk",
-          "2": "Cow Milk",
-          "3": "Paneer",
-          "4": "Ghee",
-          "5": "Daily Milk Subscription",
-          "6": "Talk to Owner",
-        };
+      const products = {
+        "1": "Buffalo Milk",
+        "2": "Cow Milk",
+        "3": "Paneer",
+        "4": "Ghee",
+        "5": "Daily Milk Subscription",
+        "6": "Talk to Owner",
+      };
 
+      if (products[text]) {
         sessions[from].product = products[text];
         sessions[from].step = "QUANTITY";
 
         reply =
-          `🛒 *${products[text]} selected*\n\n` +
-          "Please select quantity:\n" +
-          "1️⃣ 1 Litre\n" +
-          "2️⃣ 2 Litres\n" +
-          "3️⃣ 3 Litres\n\n" +
+          `🥛 *${products[text]} selected*\n\n` +
+          "Choose quantity:\n" +
+          "1️⃣ 500 ml – ₹50\n" +
+          "2️⃣ 1 L – ₹100\n" +
+          "3️⃣ 2 L – ₹200\n" +
+          "4️⃣ 3 L – ₹300\n\n" +
           "Reply with number.";
       } else {
         reply =
@@ -85,53 +82,111 @@ app.post("/webhook", async (req, res) => {
     // STEP 2: QUANTITY
     // ===============================
     else if (sessions[from].step === "QUANTITY") {
-      const qtyMap = { "1": "1 Litre", "2": "2 Litres", "3": "3 Litres" };
+      const qtyMap = {
+        "1": { qty: "500 ml", price: 50 },
+        "2": { qty: "1 L", price: 100 },
+        "3": { qty: "2 L", price: 200 },
+        "4": { qty: "3 L", price: 300 },
+      };
 
       if (!qtyMap[text]) {
-        reply = "❌ Invalid option.\nPlease reply 1 / 2 / 3";
+        reply = "❌ Invalid choice. Please reply 1 / 2 / 3 / 4";
       } else {
-        sessions[from].quantity = qtyMap[text];
+        sessions[from].quantity = qtyMap[text].qty;
+        sessions[from].price = qtyMap[text].price;
         sessions[from].step = "ADDRESS";
-        reply = "📍 Please send your *delivery address*.";
+
+        reply =
+          "📍 Please share *delivery address* or use 📎 → *Location* option.";
       }
     }
 
     // ===============================
-    // STEP 3: ADDRESS
+    // STEP 3: ADDRESS / LOCATION
     // ===============================
     else if (sessions[from].step === "ADDRESS") {
-      sessions[from].address = text;
+      if (location) {
+        sessions[from].address = `Location: ${location.latitude}, ${location.longitude}`;
+      } else {
+        sessions[from].address = text;
+      }
+
       sessions[from].step = "START_DATE";
 
       reply =
-        "📅 From which date do you want milk?\n\n" +
-        "Example: *05-Jan-2026*";
+        "📅 Select start date:\n\n" +
+        "1️⃣ Today\n" +
+        "2️⃣ Tomorrow\n" +
+        "3️⃣ Custom Date";
     }
 
     // ===============================
     // STEP 4: START DATE
     // ===============================
     else if (sessions[from].step === "START_DATE") {
+      if (text === "1") {
+        sessions[from].startDate = "Today";
+        sessions[from].step = "DELIVERY_TIME";
+      } else if (text === "2") {
+        sessions[from].startDate = "Tomorrow";
+        sessions[from].step = "DELIVERY_TIME";
+      } else if (text === "3") {
+        sessions[from].step = "CUSTOM_DATE";
+        reply = "✍️ Please type date (DD-MM-YYYY)";
+      } else {
+        reply = "❌ Invalid option. Reply 1 / 2 / 3";
+      }
+
+      if (sessions[from].step === "DELIVERY_TIME") {
+        reply =
+          "⏰ Choose delivery time:\n\n" +
+          "1️⃣ Morning\n" +
+          "2️⃣ Evening";
+      }
+    }
+
+    // ===============================
+    // CUSTOM DATE
+    // ===============================
+    else if (sessions[from].step === "CUSTOM_DATE") {
       sessions[from].startDate = text;
+      sessions[from].step = "DELIVERY_TIME";
+
+      reply =
+        "⏰ Choose delivery time:\n\n" +
+        "1️⃣ Morning\n" +
+        "2️⃣ Evening";
+    }
+
+    // ===============================
+    // DELIVERY TIME
+    // ===============================
+    else if (sessions[from].step === "DELIVERY_TIME") {
+      sessions[from].deliveryTime =
+        text === "1" ? "Morning" : "Evening";
 
       // SAVE TO GOOGLE SHEET
       await axios.post(process.env.GOOGLE_SHEET_URL, {
         phone: from,
         product: sessions[from].product,
         quantity: sessions[from].quantity,
+        price: sessions[from].price,
         address: sessions[from].address,
         startDate: sessions[from].startDate,
+        deliveryTime: sessions[from].deliveryTime,
       });
 
       reply =
         "✅ *Order Confirmed!*\n\n" +
-        `🥛 Product: ${sessions[from].product}\n` +
-        `📦 Quantity: ${sessions[from].quantity}\n` +
-        `📍 Address: ${sessions[from].address}\n` +
-        `📅 Start Date: ${sessions[from].startDate}\n\n` +
+        `🥛 ${sessions[from].product}\n` +
+        `📦 ${sessions[from].quantity}\n` +
+        `💰 ₹${sessions[from].price}\n` +
+        `📍 ${sessions[from].address}\n` +
+        `📅 ${sessions[from].startDate}\n` +
+        `⏰ ${sessions[from].deliveryTime}\n\n` +
         "Thank you for choosing *Bala Milk Store* 🙏";
 
-      delete sessions[from]; // clear session
+      delete sessions[from];
     }
 
     // ===============================
@@ -154,12 +209,9 @@ app.post("/webhook", async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Error:", err.message);
+    console.error(err.message);
     res.sendStatus(200);
   }
 });
 
-// ===============================
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
