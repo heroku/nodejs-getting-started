@@ -6,11 +6,44 @@ app.use(express.json());
 
 const sessions = {};
 
+/* ================= PRODUCTS ================= */
 const PRODUCTS = {
-  "1": { name: "Buffalo Milk", price: 100 },
-  "2": { name: "Cow Milk", price: 120 },
-  "3": { name: "Paneer", price: 600 },
-  "4": { name: "Ghee", price: 1000 }
+  "1": {
+    name: "Buffalo Milk",
+    emoji: "🐃",
+    units: {
+      "1": { qty: "500ml", price: 50 },
+      "2": { qty: "1 Litre", price: 100 },
+      "3": { qty: "2 Litres", price: 200 }
+    }
+  },
+  "2": {
+    name: "Cow Milk",
+    emoji: "🐄",
+    units: {
+      "1": { qty: "500ml", price: 60 },
+      "2": { qty: "1 Litre", price: 120 },
+      "3": { qty: "2 Litres", price: 240 }
+    }
+  },
+  "3": {
+    name: "Paneer",
+    emoji: "🧀",
+    units: {
+      "1": { qty: "250g", price: 150 },
+      "2": { qty: "500g", price: 300 },
+      "3": { qty: "1 Kg", price: 600 }
+    }
+  },
+  "4": {
+    name: "Ghee",
+    emoji: "🥘",
+    units: {
+      "1": { qty: "250ml", price: 250 },
+      "2": { qty: "500ml", price: 500 },
+      "3": { qty: "1 Litre", price: 1000 }
+    }
+  }
 };
 
 /* ================= VERIFY ================= */
@@ -31,7 +64,7 @@ app.post("/webhook", async (req, res) => {
   if (!msg) return res.sendStatus(200);
 
   const from = msg.from;
-  const text = msg.text?.body?.trim().toLowerCase();
+  const text = msg.text?.body?.trim();
   const name = contact?.profile?.name || "";
 
   if (!sessions[from] || text === "0") {
@@ -40,46 +73,41 @@ app.post("/webhook", async (req, res) => {
     return res.sendStatus(200);
   }
 
-  let s = sessions[from];
+  const s = sessions[from];
   let reply = "";
 
   switch (s.step) {
 
     /* -------- MENU -------- */
     case "MENU":
-      if (text === "5") {
-        reply = "📅 Daily Milk Subscription coming soon!";
-        break;
-      }
       if (text === "6") {
-        reply = "📞 Owner will contact you shortly.";
         await saveSheet({ phone: from, name, type: "Enquiry" });
+        reply = "📞 Owner will contact you shortly.";
         delete sessions[from];
         break;
       }
       if (!PRODUCTS[text]) {
-        reply = "❌ Please choose valid option";
+        reply = "❌ Please select valid option";
         break;
       }
+      s.productKey = text;
       s.product = PRODUCTS[text].name;
-      s.pricePerUnit = PRODUCTS[text].price;
-      reply =
-        `🧴 ${s.product}\n\nSelect Quantity:\n` +
-        `1️⃣ 500ml\n2️⃣ 1L\n3️⃣ 2L\n\n0️⃣ Back`;
+      reply = formatQuantityMenu(PRODUCTS[text]);
       s.step = "QTY";
       break;
 
-    /* -------- QUANTITY -------- */
+    /* -------- QTY -------- */
     case "QTY":
-      const qtyMap = { "1": "500ml", "2": "1L", "3": "2L" };
-      if (!qtyMap[text]) {
-        reply = "❌ Select 1 / 2 / 3 or 0";
+      const product = PRODUCTS[s.productKey];
+      if (!product.units[text]) {
+        reply = "❌ Please select valid quantity";
         break;
       }
-      s.quantity = qtyMap[text];
+      s.quantity = product.units[text].qty;
+      s.price = product.units[text].price;
       reply =
         "📍 Please enter delivery address\n" +
-        "OR share your *current location*\n\n0️⃣ Back";
+        "or share *current location*\n\n0️⃣ Back";
       s.step = "ADDRESS";
       break;
 
@@ -87,7 +115,7 @@ app.post("/webhook", async (req, res) => {
     case "ADDRESS":
       s.address = text;
       reply =
-        "🕒 Choose Delivery Slot:\n\n" +
+        "🕒 Delivery Slot:\n\n" +
         "1️⃣ Morning\n2️⃣ Evening\n\n0️⃣ Back";
       s.step = "SLOT";
       break;
@@ -96,13 +124,8 @@ app.post("/webhook", async (req, res) => {
     case "SLOT":
       if (text === "1") s.slot = "Morning";
       else if (text === "2") s.slot = "Evening";
-      else {
-        reply = "❌ Choose 1 or 2";
-        break;
-      }
-      reply =
-        `⏰ Enter delivery time\n` +
-        `Example: 6:30 AM or 7:00 PM\n\n0️⃣ Back`;
+      else { reply = "❌ Choose 1 or 2"; break; }
+      reply = "⏰ Enter delivery time (eg: 6:30 AM)";
       s.step = "TIME";
       break;
 
@@ -121,18 +144,16 @@ app.post("/webhook", async (req, res) => {
       if (text === "1") {
         s.payment = "Cash on Delivery";
         await saveSheet({ ...s, phone: from, type: "Payment" });
-        reply = "✅ Order Confirmed!\nPayment: COD 🙏";
+        reply = "✅ Order Confirmed (COD) 🙏";
         delete sessions[from];
       } else if (text === "2") {
         s.payment = "UPI";
         reply =
-          `💰 Pay using UPI\n\n` +
-          `8121893882-2@ybl\n\n` +
-          `📸 Send payment screenshot\n\n0️⃣ Back`;
+          `💰 Amount: ₹${s.price}\n\n` +
+          `UPI ID:\n8121893882-2@ybl\n\n` +
+          `📸 Send payment screenshot`;
         s.step = "SCREENSHOT";
-      } else {
-        reply = "❌ Choose 1 or 2";
-      }
+      } else reply = "❌ Choose 1 or 2";
       break;
 
     /* -------- SCREENSHOT -------- */
@@ -140,11 +161,9 @@ app.post("/webhook", async (req, res) => {
       if (msg.image) {
         s.screenshot = msg.image.id;
         await saveSheet({ ...s, phone: from, type: "Payment" });
-        reply = "✅ Payment received! Order confirmed 🎉";
+        reply = "✅ Payment received. Order confirmed 🎉";
         delete sessions[from];
-      } else {
-        reply = "📸 Please send payment screenshot";
-      }
+      } else reply = "📸 Please send screenshot";
       break;
   }
 
@@ -154,17 +173,26 @@ app.post("/webhook", async (req, res) => {
 
 /* ================= HELPERS ================= */
 
+function formatQuantityMenu(product) {
+  let txt = `${product.emoji} *${product.name} – Price Details*\n\n`;
+  Object.entries(product.units).forEach(([k, v]) => {
+    txt += `${k}️⃣ ${v.qty} – ₹${v.price}\n`;
+  });
+  txt += "\n0️⃣ ⬅ Back";
+  return txt;
+}
+
 async function sendMenu(to) {
-  const text =
+  await sendMessage(
+    to,
     "🥛 *Bala Milk Store*\n\n" +
-    "Please choose an option:\n\n" +
-    "1️⃣ Buffalo Milk – ₹100/L\n" +
-    "2️⃣ Cow Milk – ₹120/L\n" +
-    "3️⃣ Paneer – ₹600/Kg\n" +
-    "4️⃣ Ghee – ₹1000/Kg\n" +
+    "1️⃣ Buffalo Milk\n" +
+    "2️⃣ Cow Milk\n" +
+    "3️⃣ Paneer\n" +
+    "4️⃣ Ghee\n" +
     "5️⃣ Daily Milk Subscription\n" +
-    "6️⃣ Talk to Owner";
-  await sendMessage(to, text);
+    "6️⃣ Talk to Owner"
+  );
 }
 
 async function sendMessage(to, text) {
