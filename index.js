@@ -1,217 +1,183 @@
 const express = require("express");
-const axios = require("axios");
+const bodyParser = require("body-parser");
 
 const app = express();
-app.use(express.json());
+const PORT = process.env.PORT || 10000;
 
-const PORT = process.env.PORT || 3000;
+app.use(bodyParser.json());
 
-// ===============================
-// TEMP SESSION STORAGE
-// ===============================
 const sessions = {};
 
-// ===============================
-// WEBHOOK VERIFY
-// ===============================
-app.get("/webhook", (req, res) => {
-  if (
-    req.query["hub.mode"] === "subscribe" &&
-    req.query["hub.verify_token"] === process.env.VERIFY_TOKEN
-  ) {
-    return res.status(200).send(req.query["hub.challenge"]);
-  }
-  res.sendStatus(403);
+// Health check
+app.get("/", (req, res) => {
+  res.send("Bala Milk Store WhatsApp Bot is running ✅");
 });
 
-// ===============================
-// WEBHOOK RECEIVE
-// ===============================
 app.post("/webhook", async (req, res) => {
   try {
-    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!message) return res.sendStatus(200);
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
 
-    const from = message.from;
-    const text = message.text?.body?.trim();
-    const location = message.location;
+    if (!value?.messages) {
+      return res.sendStatus(200);
+    }
 
-    if (!sessions[from]) sessions[from] = { step: "MENU" };
+    const messageObj = value.messages[0];
+    const from = messageObj.from;
+    const text = messageObj.text?.body?.trim();
+
+    if (!sessions[from]) {
+      sessions[from] = { step: "START" };
+    }
 
     let reply = "";
 
-    // ===============================
-    // STEP 1: MENU
-    // ===============================
-    if (sessions[from].step === "MENU") {
-      const products = {
-        "1": "Buffalo Milk",
-        "2": "Cow Milk",
-        "3": "Paneer",
-        "4": "Ghee",
-        "5": "Daily Milk Subscription",
-        "6": "Talk to Owner",
-      };
-
-      if (products[text]) {
-        sessions[from].product = products[text];
-        sessions[from].step = "QUANTITY";
-
-        reply =
-          `🥛 *${products[text]} selected*\n\n` +
-          "Choose quantity:\n" +
-          "1️⃣ 500 ml – ₹50\n" +
-          "2️⃣ 1 L – ₹100\n" +
-          "3️⃣ 2 L – ₹200\n" +
-          "4️⃣ 3 L – ₹300\n\n" +
-          "Reply with number.";
-      } else {
+    switch (sessions[from].step) {
+      case "START":
         reply =
           "Welcome to *Bala Milk Store* 🥛\n\n" +
+          "Please choose an option:\n" +
           "1️⃣ Buffalo Milk – ₹100/L\n" +
           "2️⃣ Cow Milk – ₹120/L\n" +
           "3️⃣ Paneer – ₹600/Kg\n" +
           "4️⃣ Ghee – ₹1000/Kg\n" +
           "5️⃣ Daily Milk Subscription\n" +
           "6️⃣ Talk to Owner\n\n" +
-          "Reply with option number.";
-      }
-    }
+          "Reply with the option number.";
+        sessions[from].step = "PRODUCT";
+        break;
 
-    // ===============================
-    // STEP 2: QUANTITY
-    // ===============================
-    else if (sessions[from].step === "QUANTITY") {
-      const qtyMap = {
-        "1": { qty: "500 ml", price: 50 },
-        "2": { qty: "1 L", price: 100 },
-        "3": { qty: "2 L", price: 200 },
-        "4": { qty: "3 L", price: 300 },
-      };
+      case "PRODUCT":
+        if (text === "1") {
+          sessions[from].product = "Buffalo Milk";
+          sessions[from].pricePerL = 100;
+        } else if (text === "2") {
+          sessions[from].product = "Cow Milk";
+          sessions[from].pricePerL = 120;
+        } else {
+          reply = "❌ Invalid option. Please reply with a valid number.";
+          break;
+        }
 
-      if (!qtyMap[text]) {
-        reply = "❌ Invalid choice. Please reply 1 / 2 / 3 / 4";
-      } else {
-        sessions[from].quantity = qtyMap[text].qty;
-        sessions[from].price = qtyMap[text].price;
+        reply =
+          `🥛 *${sessions[from].product} selected*\n\n` +
+          "Choose quantity:\n" +
+          "1️⃣ 500ml – ₹50\n" +
+          "2️⃣ 1 L\n" +
+          "3️⃣ 2 L";
+
+        sessions[from].step = "QUANTITY";
+        break;
+
+      case "QUANTITY":
+        if (text === "1") {
+          sessions[from].quantity = "500ml";
+          sessions[from].price = 50;
+        } else if (text === "2") {
+          sessions[from].quantity = "1 L";
+          sessions[from].price = sessions[from].pricePerL;
+        } else if (text === "3") {
+          sessions[from].quantity = "2 L";
+          sessions[from].price = sessions[from].pricePerL * 2;
+        } else {
+          reply = "❌ Invalid quantity. Choose 1, 2 or 3.";
+          break;
+        }
+
+        reply = "📍 Please send your *delivery address*.";
         sessions[from].step = "ADDRESS";
+        break;
 
-        reply =
-          "📍 Please share *delivery address* or use 📎 → *Location* option.";
-      }
-    }
-
-    // ===============================
-    // STEP 3: ADDRESS / LOCATION
-    // ===============================
-    else if (sessions[from].step === "ADDRESS") {
-      if (location) {
-        sessions[from].address = `Location: ${location.latitude}, ${location.longitude}`;
-      } else {
+      case "ADDRESS":
         sessions[from].address = text;
-      }
 
-      sessions[from].step = "START_DATE";
-
-      reply =
-        "📅 Select start date:\n\n" +
-        "1️⃣ Today\n" +
-        "2️⃣ Tomorrow\n" +
-        "3️⃣ Custom Date";
-    }
-
-    // ===============================
-    // STEP 4: START DATE
-    // ===============================
-    else if (sessions[from].step === "START_DATE") {
-      if (text === "1") {
-        sessions[from].startDate = "Today";
-        sessions[from].step = "DELIVERY_TIME";
-      } else if (text === "2") {
-        sessions[from].startDate = "Tomorrow";
-        sessions[from].step = "DELIVERY_TIME";
-      } else if (text === "3") {
-        sessions[from].step = "CUSTOM_DATE";
-        reply = "✍️ Please type date (DD-MM-YYYY)";
-      } else {
-        reply = "❌ Invalid option. Reply 1 / 2 / 3";
-      }
-
-      if (sessions[from].step === "DELIVERY_TIME") {
         reply =
-          "⏰ Choose delivery time:\n\n" +
+          "📅 From when do you want delivery?\n\n" +
+          "1️⃣ From Today\n" +
+          "2️⃣ From Tomorrow\n" +
+          "3️⃣ Pick a custom date";
+
+        sessions[from].step = "START_DATE";
+        break;
+
+      case "START_DATE":
+        if (text === "1") sessions[from].startDate = "Today";
+        else if (text === "2") sessions[from].startDate = "Tomorrow";
+        else if (text === "3") {
+          reply = "📅 Please type the start date (DD-MM-YYYY)";
+          sessions[from].step = "CUSTOM_DATE";
+          break;
+        } else {
+          reply = "❌ Invalid option.";
+          break;
+        }
+
+        reply =
+          "⏰ Choose delivery time:\n" +
           "1️⃣ Morning\n" +
           "2️⃣ Evening";
-      }
+
+        sessions[from].step = "DELIVERY_TIME";
+        break;
+
+      case "CUSTOM_DATE":
+        sessions[from].startDate = text;
+
+        reply =
+          "⏰ Choose delivery time:\n" +
+          "1️⃣ Morning\n" +
+          "2️⃣ Evening";
+
+        sessions[from].step = "DELIVERY_TIME";
+        break;
+
+      case "DELIVERY_TIME":
+        if (text === "1") sessions[from].deliveryTime = "Morning";
+        else if (text === "2") sessions[from].deliveryTime = "Evening";
+        else {
+          reply = "❌ Invalid option.";
+          break;
+        }
+
+        reply =
+          "✅ *Order Confirmed!*\n\n" +
+          `🥛 ${sessions[from].product}\n` +
+          `📦 ${sessions[from].quantity}\n` +
+          `📍 ${sessions[from].address}\n` +
+          `📅 From: ${sessions[from].startDate}\n` +
+          `⏰ ${sessions[from].deliveryTime}\n` +
+          `💰 ₹${sessions[from].price}\n\n` +
+          "💳 *Payment Required*\n" +
+          "UPI ID: *8121893882-2@ybl*\n\n" +
+          "📸 After payment, please send the screenshot here.";
+
+        sessions[from].step = "WAIT_PAYMENT";
+        break;
+
+      case "WAIT_PAYMENT":
+        reply =
+          "🙏 Thank you!\n\n" +
+          "📸 Payment screenshot received.\n" +
+          "Our team will verify and confirm your order shortly.";
+        break;
+
+      default:
+        reply = "Something went wrong. Please say Hi again.";
+        sessions[from].step = "START";
     }
 
-    // ===============================
-    // CUSTOM DATE
-    // ===============================
-    else if (sessions[from].step === "CUSTOM_DATE") {
-      sessions[from].startDate = text;
-      sessions[from].step = "DELIVERY_TIME";
-
-      reply =
-        "⏰ Choose delivery time:\n\n" +
-        "1️⃣ Morning\n" +
-        "2️⃣ Evening";
-    }
-
-    // ===============================
-    // DELIVERY TIME
-    // ===============================
-    else if (sessions[from].step === "DELIVERY_TIME") {
-      sessions[from].deliveryTime =
-        text === "1" ? "Morning" : "Evening";
-
-      // SAVE TO GOOGLE SHEET
-      await axios.post(process.env.GOOGLE_SHEET_URL, {
-        phone: from,
-        product: sessions[from].product,
-        quantity: sessions[from].quantity,
-        price: sessions[from].price,
-        address: sessions[from].address,
-        startDate: sessions[from].startDate,
-        deliveryTime: sessions[from].deliveryTime,
-      });
-
-      reply =
-        "✅ *Order Confirmed!*\n\n" +
-        `🥛 ${sessions[from].product}\n` +
-        `📦 ${sessions[from].quantity}\n` +
-        `💰 ₹${sessions[from].price}\n` +
-        `📍 ${sessions[from].address}\n` +
-        `📅 ${sessions[from].startDate}\n` +
-        `⏰ ${sessions[from].deliveryTime}\n\n` +
-        "Thank you for choosing *Bala Milk Store* 🙏";
-
-      delete sessions[from];
-    }
-
-    // ===============================
-    // SEND MESSAGE
-    // ===============================
-    await axios.post(
-      `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: from,
-        text: { body: reply },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    console.log("From:", from);
+    console.log("Message:", text);
+    console.log("Reply:", reply);
 
     res.sendStatus(200);
   } catch (err) {
-    console.error(err.message);
-    res.sendStatus(200);
+    console.error(err);
+    res.sendStatus(500);
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
+app.listen(PORT, () => {
+  console.log("Server started on port", PORT);
+});
