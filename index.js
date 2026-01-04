@@ -4,105 +4,134 @@ const axios = require("axios");
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// ENV variables (Render)
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "bala_verify_token";
-
-// --------------------
-// Webhook verification
-// --------------------
+// ===============================
+// WEBHOOK VERIFICATION (META)
+// ===============================
 app.get("/webhook", (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
     console.log("✅ Webhook verified");
-    return res.status(200).send(challenge);
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
   }
-  return res.sendStatus(403);
 });
 
-// --------------------
-// Receive messages
-// --------------------
+// ===============================
+// RECEIVE WHATSAPP MESSAGE
+// ===============================
 app.post("/webhook", async (req, res) => {
   try {
-    const message =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const message = value?.messages?.[0];
 
-    if (!message) return res.sendStatus(200);
+    if (!message) {
+      return res.sendStatus(200);
+    }
 
-    const from = message.from;
+    const from = message.from; // customer phone
     const text = message.text?.body?.trim();
 
-    console.log("📩 From:", from);
-    console.log("💬 Message:", text);
+    console.log("📩 From:", from, "Message:", text);
 
-    let reply;
+    // ===============================
+    // MENU LOGIC
+    // ===============================
+    let replyText = "";
+    let product = "";
 
     switch (text) {
       case "1":
-        reply = "🥛 *Buffalo Milk*\n₹100 per litre";
+        product = "Buffalo Milk";
+        replyText = "🥛 Buffalo Milk selected\nPrice: ₹100/L\nThank you for your order!";
         break;
+
       case "2":
-        reply = "🐄 *Cow Milk*\n₹120 per litre";
+        product = "Cow Milk";
+        replyText = "🥛 Cow Milk selected\nPrice: ₹120/L\nThank you for your order!";
         break;
+
       case "3":
-        reply = "🧀 *Paneer*\n₹600 per Kg";
+        product = "Paneer";
+        replyText = "🧀 Paneer selected\nPrice: ₹600/Kg\nThank you for your order!";
         break;
+
       case "4":
-        reply = "🧈 *Ghee*\n₹1000 per Kg";
+        product = "Ghee";
+        replyText = "🧈 Ghee selected\nPrice: ₹1000/Kg\nThank you for your order!";
         break;
+
       case "5":
-        reply = "📅 Daily milk subscription\nReply YES to continue";
+        replyText = "📅 Daily Milk Subscription\nOwner will contact you shortly.";
+        product = "Subscription";
         break;
+
       case "6":
-        reply = "📞 Owner: +91 81218 93882";
+        replyText = "📞 Owner will call you shortly.\nThank you!";
+        product = "Talk to Owner";
         break;
+
       default:
-        reply =
-          "🙏 *Welcome to Bala Milk Store 🥛*\n\n" +
-          "1️⃣ Buffalo Milk\n" +
-          "2️⃣ Cow Milk\n" +
-          "3️⃣ Paneer\n" +
-          "4️⃣ Ghee\n" +
-          "5️⃣ Subscription\n" +
+        replyText =
+          "Welcome to *Bala Milk Store* 🥛\n\n" +
+          "Please choose an option:\n" +
+          "1️⃣ Buffalo Milk – ₹100/L\n" +
+          "2️⃣ Cow Milk – ₹120/L\n" +
+          "3️⃣ Paneer – ₹600/Kg\n" +
+          "4️⃣ Ghee – ₹1000/Kg\n" +
+          "5️⃣ Daily Milk Subscription\n" +
           "6️⃣ Talk to Owner\n\n" +
-          "Reply with option number";
+          "Reply with the option number.";
+        product = "Menu Shown";
     }
 
+    // ===============================
+    // SAVE ORDER TO GOOGLE SHEET
+    // ===============================
+    await axios.post(process.env.GOOGLE_SHEET_URL, {
+      phone: from,
+      product: product,
+      quantity: 1,
+      message: text,
+    });
+
+    // ===============================
+    // SEND WHATSAPP REPLY
+    // ===============================
     await axios.post(
-      `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         to: from,
-        text: { body: reply }
+        text: { body: replyText },
       },
       {
         headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    console.log("✅ Reply sent");
     res.sendStatus(200);
-  } catch (err) {
-    console.error("❌ Error:", err.response?.data || err.message);
+  } catch (error) {
+    console.error("❌ Error:", error.response?.data || error.message);
     res.sendStatus(200);
   }
 });
 
-// --------------------
-app.get("/", (req, res) => {
-  res.send("✅ Bala WhatsApp Bot is running");
-});
-
+// ===============================
+// SERVER START
+// ===============================
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
