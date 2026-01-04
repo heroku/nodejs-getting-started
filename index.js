@@ -1,219 +1,228 @@
 const express = require("express");
 const axios = require("axios");
+const bodyParser = require("body-parser");
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
+
+const PORT = process.env.PORT || 10000;
+
+/* ================= CONFIG ================= */
+
+const TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_ID = process.env.PHONE_NUMBER_ID;
+const SHEET_URL = process.env.SHEET_WEBHOOK; // Google Apps Script URL
+const OWNER_UPI = "8121893882-2@ybl";
+
+/* ================= SESSION ================= */
 
 const sessions = {};
 
+function newSession(phone) {
+  return {
+    orderId: "ORD-" + Date.now(),
+    phone,
+    step: "MENU",
+  };
+}
+
 /* ================= PRODUCTS ================= */
+
 const PRODUCTS = {
-  "1": {
-    name: "Buffalo Milk",
-    emoji: "🐃",
-    units: {
-      "1": { qty: "500ml", price: 50 },
-      "2": { qty: "1 Litre", price: 100 },
-      "3": { qty: "2 Litres", price: 200 }
-    }
-  },
-  "2": {
-    name: "Cow Milk",
-    emoji: "🐄",
-    units: {
-      "1": { qty: "500ml", price: 60 },
-      "2": { qty: "1 Litre", price: 120 },
-      "3": { qty: "2 Litres", price: 240 }
-    }
-  },
-  "3": {
-    name: "Paneer",
-    emoji: "🧀",
-    units: {
-      "1": { qty: "250g", price: 150 },
-      "2": { qty: "500g", price: 300 },
-      "3": { qty: "1 Kg", price: 600 }
-    }
-  },
-  "4": {
-    name: "Ghee",
-    emoji: "🥘",
-    units: {
-      "1": { qty: "250ml", price: 250 },
-      "2": { qty: "500ml", price: 500 },
-      "3": { qty: "1 Litre", price: 1000 }
-    }
-  }
+  "1": { name: "Buffalo Milk", price: 100 },
+  "2": { name: "Cow Milk", price: 120 },
+  "3": { name: "Paneer", price: 600 },
+  "4": { name: "Ghee", price: 1000 },
+  "5": { name: "Daily Milk Subscription" },
+  "6": { name: "Talk to Owner" },
 };
 
-/* ================= VERIFY ================= */
-app.get("/webhook", (req, res) => {
-  if (
-    req.query["hub.mode"] === "subscribe" &&
-    req.query["hub.verify_token"] === process.env.VERIFY_TOKEN
-  ) {
-    return res.status(200).send(req.query["hub.challenge"]);
-  }
-  res.sendStatus(403);
-});
+/* ================= WHATSAPP SEND ================= */
+
+async function sendMessage(to, text) {
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      text: { body: text },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
+/* ================= GOOGLE SHEET ================= */
+
+async function saveToSheet(data) {
+  await axios.post(SHEET_URL, data);
+}
+
+/* ================= MENU ================= */
+
+function menuText() {
+  return `🥛 Welcome to *Bala Milk Store*
+
+Please choose an option:
+1️⃣ Buffalo Milk – ₹100/L
+2️⃣ Cow Milk – ₹120/L
+3️⃣ Paneer – ₹600/Kg
+4️⃣ Ghee – ₹1000/Kg
+5️⃣ Daily Milk Subscription
+6️⃣ Talk to Owner
+
+Reply with option number.`;
+}
 
 /* ================= WEBHOOK ================= */
+
 app.post("/webhook", async (req, res) => {
-  const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  const contact = req.body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
-  if (!msg) return res.sendStatus(200);
+  const entry = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  if (!entry) return res.sendStatus(200);
 
-  const from = msg.from;
-  const text = msg.text?.body?.trim();
-  const name = contact?.profile?.name || "";
+  const from = entry.from;
+  const text = entry.text?.body?.trim();
+  const image = entry.image;
 
-  if (!sessions[from] || text === "0") {
-    sessions[from] = { step: "MENU", name };
-    await sendMenu(from);
+  if (!sessions[from]) {
+    sessions[from] = newSession(from);
+    await sendMessage(from, menuText());
     return res.sendStatus(200);
   }
 
   const s = sessions[from];
-  let reply = "";
 
-  switch (s.step) {
+  /* ===== MENU ===== */
+  if (s.step === "MENU") {
+    if (!PRODUCTS[text]) {
+      await sendMessage(from, "❌ Invalid option. Please choose again.\n\n" + menuText());
+      return res.sendStatus(200);
+    }
 
-    /* -------- MENU -------- */
-    case "MENU":
-      if (text === "6") {
-        await saveSheet({ phone: from, name, type: "Enquiry" });
-        reply = "📞 Owner will contact you shortly.";
-        delete sessions[from];
-        break;
-      }
-      if (!PRODUCTS[text]) {
-        reply = "❌ Please select valid option";
-        break;
-      }
-      s.productKey = text;
-      s.product = PRODUCTS[text].name;
-      reply = formatQuantityMenu(PRODUCTS[text]);
-      s.step = "QTY";
-      break;
+    if (text === "6") {
+      await sendMessage(from, "📞 Please call: 8121893882");
+      delete sessions[from];
+      return res.sendStatus(200);
+    }
 
-    /* -------- QTY -------- */
-    case "QTY":
-      const product = PRODUCTS[s.productKey];
-      if (!product.units[text]) {
-        reply = "❌ Please select valid quantity";
-        break;
-      }
-      s.quantity = product.units[text].qty;
-      s.price = product.units[text].price;
-      reply =
-        "📍 Please enter delivery address\n" +
-        "or share *current location*\n\n0️⃣ Back";
-      s.step = "ADDRESS";
-      break;
+    s.product = PRODUCTS[text].name;
+    s.unitPrice = PRODUCTS[text].price;
+    s.step = "QTY";
 
-    /* -------- ADDRESS -------- */
-    case "ADDRESS":
-      s.address = text;
-      reply =
-        "🕒 Delivery Slot:\n\n" +
-        "1️⃣ Morning\n2️⃣ Evening\n\n0️⃣ Back";
-      s.step = "SLOT";
-      break;
-
-    /* -------- SLOT -------- */
-    case "SLOT":
-      if (text === "1") s.slot = "Morning";
-      else if (text === "2") s.slot = "Evening";
-      else { reply = "❌ Choose 1 or 2"; break; }
-      reply = "⏰ Enter delivery time (eg: 6:30 AM)";
-      s.step = "TIME";
-      break;
-
-    /* -------- TIME -------- */
-    case "TIME":
-      s.time = text;
-      reply =
-        "💳 Payment Method:\n\n" +
-        "1️⃣ Cash on Delivery\n" +
-        "2️⃣ UPI Payment\n\n0️⃣ Back";
-      s.step = "PAYMENT";
-      break;
-
-    /* -------- PAYMENT -------- */
-    case "PAYMENT":
-      if (text === "1") {
-        s.payment = "Cash on Delivery";
-        await saveSheet({ ...s, phone: from, type: "Payment" });
-        reply = "✅ Order Confirmed (COD) 🙏";
-        delete sessions[from];
-      } else if (text === "2") {
-        s.payment = "UPI";
-        reply =
-          `💰 Amount: ₹${s.price}\n\n` +
-          `UPI ID:\n8121893882-2@ybl\n\n` +
-          `📸 Send payment screenshot`;
-        s.step = "SCREENSHOT";
-      } else reply = "❌ Choose 1 or 2";
-      break;
-
-    /* -------- SCREENSHOT -------- */
-    case "SCREENSHOT":
-      if (msg.image) {
-        s.screenshot = msg.image.id;
-        await saveSheet({ ...s, phone: from, type: "Payment" });
-        reply = "✅ Payment received. Order confirmed 🎉";
-        delete sessions[from];
-      } else reply = "📸 Please send screenshot";
-      break;
+    await sendMessage(
+      from,
+      `🧾 *${s.product}*\n\nChoose quantity:\n1️⃣ 500ml\n2️⃣ 1 L\n3️⃣ 2 L`
+    );
+    return res.sendStatus(200);
   }
 
-  if (reply) await sendMessage(from, reply);
+  /* ===== QUANTITY ===== */
+  if (s.step === "QTY") {
+    if (!["1", "2", "3"].includes(text)) {
+      await sendMessage(from, "❌ Choose 1 / 2 / 3");
+      return res.sendStatus(200);
+    }
+
+    s.quantity =
+      text === "1" ? "500ml" : text === "2" ? "1L" : "2L";
+
+    const multiplier = text === "1" ? 0.5 : text === "2" ? 1 : 2;
+    s.price = s.unitPrice * multiplier;
+
+    s.step = "ADDRESS";
+    await sendMessage(from, "📍 Please send your delivery address.");
+    return res.sendStatus(200);
+  }
+
+  /* ===== ADDRESS ===== */
+  if (s.step === "ADDRESS") {
+    s.address = text;
+    s.step = "SLOT";
+    await sendMessage(from, "🚚 Choose delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
+    return res.sendStatus(200);
+  }
+
+  /* ===== SLOT ===== */
+  if (s.step === "SLOT") {
+    if (!["1", "2"].includes(text)) {
+      await sendMessage(from, "❌ Choose 1 or 2");
+      return res.sendStatus(200);
+    }
+
+    s.slot = text === "1" ? "Morning" : "Evening";
+    s.step = "TIME";
+    await sendMessage(from, "⏰ Enter delivery time (example: 6:30 AM)");
+    return res.sendStatus(200);
+  }
+
+  /* ===== TIME ===== */
+  if (s.step === "TIME") {
+    s.time = text;
+    s.step = "PAYMENT";
+
+    await sendMessage(
+      from,
+      `💰 *Payment Options*\n\nUPI ID:\n${OWNER_UPI}\n\n1️⃣ Send payment screenshot\n2️⃣ Cash on Delivery`
+    );
+    return res.sendStatus(200);
+  }
+
+  /* ===== PAYMENT ===== */
+  if (s.step === "PAYMENT") {
+    if (text === "2") {
+      s.paymentMethod = "Cash on Delivery";
+    }
+
+    if (image) {
+      s.paymentMethod = "UPI";
+      s.screenshot = image.id;
+    }
+
+    if (!s.paymentMethod) {
+      await sendMessage(from, "❌ Please choose payment option");
+      return res.sendStatus(200);
+    }
+
+    await saveToSheet({
+      orderId: s.orderId,
+      date: new Date().toLocaleString(),
+      phone: s.phone,
+      product: s.product,
+      quantity: s.quantity,
+      price: s.price,
+      address: s.address,
+      delivery: `${s.slot} ${s.time}`,
+      payment: s.paymentMethod,
+      screenshot: s.screenshot || "",
+    });
+
+    await sendMessage(
+      from,
+      `✅ *Order Confirmed!*\n\n🧾 Order ID: ${s.orderId}\n🥛 ${s.product}\n📦 ${s.quantity}\n💰 ₹${s.price}\n🚚 ${s.slot} ${s.time}\n\n🙏 Thank you for choosing Bala Milk Store`
+    );
+
+    delete sessions[from]; // 🔥 IMPORTANT
+    return res.sendStatus(200);
+  }
+
   res.sendStatus(200);
 });
 
-/* ================= HELPERS ================= */
+/* ================= VERIFY ================= */
 
-function formatQuantityMenu(product) {
-  let txt = `${product.emoji} *${product.name} – Price Details*\n\n`;
-  Object.entries(product.units).forEach(([k, v]) => {
-    txt += `${k}️⃣ ${v.qty} – ₹${v.price}\n`;
-  });
-  txt += "\n0️⃣ ⬅ Back";
-  return txt;
-}
+app.get("/webhook", (req, res) => {
+  if (req.query["hub.verify_token"] === process.env.VERIFY_TOKEN) {
+    return res.send(req.query["hub.challenge"]);
+  }
+  res.sendStatus(403);
+});
 
-async function sendMenu(to) {
-  await sendMessage(
-    to,
-    "🥛 *Bala Milk Store*\n\n" +
-    "1️⃣ Buffalo Milk\n" +
-    "2️⃣ Cow Milk\n" +
-    "3️⃣ Paneer\n" +
-    "4️⃣ Ghee\n" +
-    "5️⃣ Daily Milk Subscription\n" +
-    "6️⃣ Talk to Owner"
-  );
-}
+/* ================= START ================= */
 
-async function sendMessage(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text }
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    }
-  );
-}
-
-async function saveSheet(data) {
-  await axios.post(process.env.GOOGLE_SHEET_URL, data);
-}
-
-app.listen(process.env.PORT || 3000);
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
