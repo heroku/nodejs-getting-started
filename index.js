@@ -20,7 +20,9 @@ const PRODUCTS = {
   "1": { name: "Buffalo Milk", price: 100 },
   "2": { name: "Cow Milk", price: 120 },
   "3": { name: "Paneer", price: 600 },
-  "4": { name: "Ghee", price: 1000 }
+  "4": { name: "Ghee", price: 1000 },
+  "5": { name: "Daily Milk Subscription" },
+  "6": { name: "Enquiry / Talk to Owner" }
 };
 
 /* ================= HELPERS ================= */
@@ -47,14 +49,17 @@ async function saveToSheet(data) {
 }
 
 function menuText() {
-  return `🥛 *Welcome to Bala’s Milk Dairy*
+  return `🥛 *Bala’s Milk Dairy*
 
 1️⃣ Buffalo Milk – ₹100/L
 2️⃣ Cow Milk – ₹120/L
 3️⃣ Paneer – ₹600/Kg
 4️⃣ Ghee – ₹1000/Kg
+5️⃣ Daily Milk Subscription
+6️⃣ Enquiry / Talk to Owner
 
-Reply with option number.`;
+Reply with option number.
+Type *0* anytime to go back.`;
 }
 
 /* ================= WEBHOOK ================= */
@@ -64,13 +69,13 @@ app.post("/webhook", async (req, res) => {
   if (!msg) return res.sendStatus(200);
 
   const from = msg.from;
-  const text = msg.text?.body?.trim()?.toLowerCase();
+  const text = msg.text?.body?.trim();
   const image = msg.image;
   const location = msg.location;
 
   /* ===== START ONLY ON HI ===== */
   if (!sessions[from]) {
-    if (text === "hi" || text === "hello") {
+    if (text?.toLowerCase() === "hi" || text?.toLowerCase() === "hello") {
       sessions[from] = {
         orderId: "ORD-" + Date.now(),
         phone: from,
@@ -83,8 +88,26 @@ app.post("/webhook", async (req, res) => {
 
   const s = sessions[from];
 
+  /* ===== BACK BUTTON ===== */
+  if (text === "0") {
+    if (s.step === "MENU") {
+      await sendMessage(from, menuText());
+      return res.sendStatus(200);
+    }
+    s.step = s.prev || "MENU";
+    await sendMessage(from, menuText());
+    return res.sendStatus(200);
+  }
+
   /* ===== MENU ===== */
   if (s.step === "MENU") {
+    if (text === "6") {
+      s.prev = "MENU";
+      s.step = "ENQUIRY";
+      await sendMessage(from, "✍️ Please type your enquiry.\n(0 = Back)");
+      return res.sendStatus(200);
+    }
+
     if (!PRODUCTS[text]) {
       await sendMessage(from, menuText());
       return res.sendStatus(200);
@@ -92,35 +115,61 @@ app.post("/webhook", async (req, res) => {
 
     s.product = PRODUCTS[text].name;
     s.unitPrice = PRODUCTS[text].price;
+    s.prev = "MENU";
     s.step = "QTY";
 
     await sendMessage(
       from,
       `🧾 *${s.product}*
+
 1️⃣ 500ml – ₹${s.unitPrice / 2}
 2️⃣ 1L – ₹${s.unitPrice}
-3️⃣ 2L – ₹${s.unitPrice * 2}`
+3️⃣ 2L – ₹${s.unitPrice * 2}
+
+0️⃣ Back`
     );
+    return res.sendStatus(200);
+  }
+
+  /* ===== ENQUIRY ===== */
+  if (s.step === "ENQUIRY") {
+    await saveToSheet({
+      Type: "Enquiry",
+      OrderId: "",
+      Phone: s.phone,
+      Enquiry: text,
+      Date: new Date().toLocaleString()
+    });
+
+    await sendMessage(
+      from,
+      `🙏 Thank you for contacting *Bala’s Milk Dairy*.
+
+We will get back to you shortly.`
+    );
+
+    delete sessions[from];
     return res.sendStatus(200);
   }
 
   /* ===== QUANTITY ===== */
   if (s.step === "QTY") {
-    const q = {
+    const map = {
       "1": { qty: "500ml", mul: 0.5 },
       "2": { qty: "1L", mul: 1 },
       "3": { qty: "2L", mul: 2 }
     };
 
-    if (!q[text]) return res.sendStatus(200);
+    if (!map[text]) return res.sendStatus(200);
 
-    s.quantity = q[text].qty;
-    s.price = s.unitPrice * q[text].mul;
+    s.quantity = map[text].qty;
+    s.price = s.unitPrice * map[text].mul;
+    s.prev = "QTY";
     s.step = "ADDR_TYPE";
 
     await sendMessage(
       from,
-      "📍 Delivery address:\n1️⃣ Send live location\n2️⃣ Type address"
+      "📍 Delivery Address:\n1️⃣ Send live location\n2️⃣ Type address\n0️⃣ Back"
     );
     return res.sendStatus(200);
   }
@@ -128,13 +177,15 @@ app.post("/webhook", async (req, res) => {
   /* ===== ADDRESS TYPE ===== */
   if (s.step === "ADDR_TYPE") {
     if (text === "1") {
+      s.prev = "ADDR_TYPE";
       s.step = "WAIT_LOCATION";
-      await sendMessage(from, "📍 Please share live location now.");
+      await sendMessage(from, "📍 Please share live location now.\n0️⃣ Back");
       return res.sendStatus(200);
     }
     if (text === "2") {
+      s.prev = "ADDR_TYPE";
       s.step = "ADDR_TEXT";
-      await sendMessage(from, "✍️ Please type your address.");
+      await sendMessage(from, "✍️ Type your address.\n0️⃣ Back");
       return res.sendStatus(200);
     }
   }
@@ -142,41 +193,40 @@ app.post("/webhook", async (req, res) => {
   /* ===== WAIT LOCATION ===== */
   if (s.step === "WAIT_LOCATION") {
     if (!location) return res.sendStatus(200);
-
     s.address = `Lat:${location.latitude},Lng:${location.longitude}`;
+    s.prev = "WAIT_LOCATION";
     s.step = "SLOT";
-
-    await sendMessage(from, "🚚 Delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
+    await sendMessage(from, "🚚 Delivery Slot:\n1️⃣ Morning\n2️⃣ Evening\n0️⃣ Back");
     return res.sendStatus(200);
   }
 
   /* ===== ADDRESS TEXT ===== */
   if (s.step === "ADDR_TEXT") {
     s.address = text;
+    s.prev = "ADDR_TEXT";
     s.step = "SLOT";
-    await sendMessage(from, "🚚 Delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
+    await sendMessage(from, "🚚 Delivery Slot:\n1️⃣ Morning\n2️⃣ Evening\n0️⃣ Back");
     return res.sendStatus(200);
   }
 
   /* ===== SLOT ===== */
   if (s.step === "SLOT") {
     if (!["1", "2"].includes(text)) return res.sendStatus(200);
-
     s.slot = text === "1" ? "Morning" : "Evening";
+    s.prev = "SLOT";
     s.step = "TIME";
-
-    await sendMessage(from, "⏰ Enter delivery time (example: 6:30 AM)");
+    await sendMessage(from, "⏰ Enter delivery time (e.g. 6:30 AM)\n0️⃣ Back");
     return res.sendStatus(200);
   }
 
   /* ===== TIME ===== */
   if (s.step === "TIME") {
     s.time = text;
+    s.prev = "TIME";
     s.step = "PAYMENT";
-
     await sendMessage(
       from,
-      "💰 Payment method:\n1️⃣ UPI\n2️⃣ Cash on Delivery"
+      "💰 Payment Method:\n1️⃣ UPI\n2️⃣ Cash on Delivery\n0️⃣ Back"
     );
     return res.sendStatus(200);
   }
@@ -185,23 +235,24 @@ app.post("/webhook", async (req, res) => {
   if (s.step === "PAYMENT") {
     if (text === "1") {
       s.payment = "UPI";
+      s.prev = "PAYMENT";
       s.step = "WAIT_SCREENSHOT";
-
       await sendMessage(
         from,
-        `📲 Pay using any UPI app
+        `📲 Pay via any UPI app
 
 UPI ID:
 ${OWNER_UPI}
 
-After payment, send screenshot here.`
+Send payment screenshot here.
+0️⃣ Back`
       );
       return res.sendStatus(200);
     }
 
     if (text === "2") {
       s.payment = "Cash on Delivery";
-      await finalize(from, s);
+      await finalizeOrder(from, s);
       return res.sendStatus(200);
     }
   }
@@ -209,9 +260,8 @@ After payment, send screenshot here.`
   /* ===== SCREENSHOT ===== */
   if (s.step === "WAIT_SCREENSHOT") {
     if (!image) return res.sendStatus(200);
-
     s.screenshot = image.id;
-    await finalize(from, s);
+    await finalizeOrder(from, s);
     return res.sendStatus(200);
   }
 
@@ -220,17 +270,19 @@ After payment, send screenshot here.`
 
 /* ================= FINALIZE ================= */
 
-async function finalize(from, s) {
+async function finalizeOrder(from, s) {
   await saveToSheet({
-    orderId: s.orderId,
-    phone: s.phone,
-    product: s.product,
-    quantity: s.quantity,
-    price: s.price,
-    address: s.address,
-    delivery: `${s.slot} ${s.time}`,
-    payment: s.payment,
-    screenshot: s.screenshot || ""
+    Type: "Order",
+    OrderId: s.orderId,
+    Phone: s.phone,
+    Product: s.product,
+    Quantity: s.quantity,
+    Price: s.price,
+    Address: s.address,
+    Delivery: `${s.slot} ${s.time}`,
+    Payment: s.payment,
+    Screenshot: s.screenshot || "",
+    Date: new Date().toLocaleString()
   });
 
   await sendMessage(
@@ -246,7 +298,7 @@ async function finalize(from, s) {
 🙏 Thank you for ordering from *Bala’s Milk Dairy* 🥛`
   );
 
-  delete sessions[from]; // 🔥 THIS STOPS MENU REPEAT
+  delete sessions[from];
 }
 
 /* ================= VERIFY ================= */
@@ -258,4 +310,4 @@ app.get("/webhook", (req, res) => {
   res.sendStatus(403);
 });
 
-app.listen(PORT, () => console.log("Running on", PORT));
+app.listen(PORT, () => console.log("Server running on", PORT));
