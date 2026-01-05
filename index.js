@@ -7,26 +7,14 @@ app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 10000;
 
-/* ========== CONFIG ========== */
-
 const TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_ID = process.env.PHONE_NUMBER_ID;
 const SHEET_URL = process.env.SHEET_WEBHOOK;
 const OWNER_UPI = "8121893882-2@ybl";
 
-/* ========== SESSION STORE ========== */
-
 const sessions = {};
 
-function newSession(phone) {
-  return {
-    orderId: "ORD-" + Date.now(),
-    phone,
-    step: "MENU",
-  };
-}
-
-/* ========== PRODUCTS ========== */
+/* ================= PRODUCTS ================= */
 
 const PRODUCTS = {
   "1": { name: "Buffalo Milk", price: 100 },
@@ -34,35 +22,10 @@ const PRODUCTS = {
   "3": { name: "Paneer", price: 600 },
   "4": { name: "Ghee", price: 1000 },
   "5": { name: "Daily Milk Subscription" },
-  "6": { name: "Talk to Owner" },
+  "6": { name: "Talk to Owner" }
 };
 
-/* ========== SEND MESSAGE ========== */
-
-async function sendMessage(to, text) {
-  await axios.post(
-    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      text: { body: text },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-}
-
-/* ========== SAVE TO SHEET ========== */
-
-async function saveToSheet(data) {
-  await axios.post(SHEET_URL, data);
-}
-
-/* ========== MENU TEXT ========== */
+/* ================= HELPERS ================= */
 
 function menuText() {
   return `🥛 *Welcome to Bala Milk Store*
@@ -78,7 +41,36 @@ Please choose an option:
 Reply with option number.`;
 }
 
-/* ========== WEBHOOK ========== */
+async function sendMessage(to, text) {
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${PHONE_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      text: { body: text }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
+
+async function saveToSheet(data) {
+  await axios.post(SHEET_URL, data);
+}
+
+function newSession(phone) {
+  return {
+    orderId: "ORD-" + Date.now(),
+    phone,
+    step: "MENU"
+  };
+}
+
+/* ================= WEBHOOK ================= */
 
 app.post("/webhook", async (req, res) => {
   const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
@@ -97,10 +89,10 @@ app.post("/webhook", async (req, res) => {
 
   const s = sessions[from];
 
-  /* ===== MENU ===== */
+  /* ============ MENU ============ */
   if (s.step === "MENU") {
     if (!PRODUCTS[text]) {
-      await sendMessage(from, "❌ Invalid option.\n\n" + menuText());
+      await sendMessage(from, menuText());
       return res.sendStatus(200);
     }
 
@@ -120,53 +112,79 @@ app.post("/webhook", async (req, res) => {
 
 Choose quantity:
 1️⃣ 500ml – ₹${s.unitPrice * 0.5}
-2️⃣ 1 L – ₹${s.unitPrice}
-3️⃣ 2 L – ₹${s.unitPrice * 2}`
+2️⃣ 1L – ₹${s.unitPrice}
+3️⃣ 2L – ₹${s.unitPrice * 2}`
     );
     return res.sendStatus(200);
   }
 
-  /* ===== QUANTITY ===== */
+  /* ============ QUANTITY ============ */
   if (s.step === "QTY") {
-    if (!["1", "2", "3"].includes(text)) {
+    const map = {
+      "1": { qty: "500ml", mul: 0.5 },
+      "2": { qty: "1L", mul: 1 },
+      "3": { qty: "2L", mul: 2 }
+    };
+
+    if (!map[text]) {
       await sendMessage(from, "❌ Choose 1 / 2 / 3");
       return res.sendStatus(200);
     }
 
-    const map = {
-      "1": { qty: "500ml", mul: 0.5 },
-      "2": { qty: "1L", mul: 1 },
-      "3": { qty: "2L", mul: 2 },
-    };
-
     s.quantity = map[text].qty;
     s.price = s.unitPrice * map[text].mul;
-    s.step = "ADDRESS";
+    s.step = "ADDRESS_CHOICE";
 
     await sendMessage(
       from,
       `📍 *Delivery Address*
-
 1️⃣ Send live location
 2️⃣ Type address manually`
     );
     return res.sendStatus(200);
   }
 
-  /* ===== ADDRESS ===== */
-  if (s.step === "ADDRESS") {
-    if (location) {
-      s.address = `Live Location: ${location.latitude}, ${location.longitude}`;
-    } else {
-      s.address = text;
+  /* ============ ADDRESS CHOICE ============ */
+  if (s.step === "ADDRESS_CHOICE") {
+    if (text === "1") {
+      s.step = "WAIT_LOCATION";
+      await sendMessage(from, "📍 Please share your live location now.");
+      return res.sendStatus(200);
     }
 
+    if (text === "2") {
+      s.step = "ADDRESS_TEXT";
+      await sendMessage(from, "✍️ Please type your delivery address.");
+      return res.sendStatus(200);
+    }
+
+    await sendMessage(from, "❌ Choose 1 or 2");
+    return res.sendStatus(200);
+  }
+
+  /* ============ WAIT LOCATION ============ */
+  if (s.step === "WAIT_LOCATION") {
+    if (!location) {
+      await sendMessage(from, "📍 Please send live location using WhatsApp.");
+      return res.sendStatus(200);
+    }
+
+    s.address = `Lat:${location.latitude}, Lng:${location.longitude}`;
+    s.step = "SLOT";
+
+    await sendMessage(from, "🚚 Choose delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
+    return res.sendStatus(200);
+  }
+
+  /* ============ ADDRESS TEXT ============ */
+  if (s.step === "ADDRESS_TEXT") {
+    s.address = text;
     s.step = "SLOT";
     await sendMessage(from, "🚚 Choose delivery slot:\n1️⃣ Morning\n2️⃣ Evening");
     return res.sendStatus(200);
   }
 
-  /* ===== SLOT ===== */
+  /* ============ SLOT ============ */
   if (s.step === "SLOT") {
     if (!["1", "2"].includes(text)) {
       await sendMessage(from, "❌ Choose 1 or 2");
@@ -175,11 +193,12 @@ Choose quantity:
 
     s.slot = text === "1" ? "Morning" : "Evening";
     s.step = "TIME";
+
     await sendMessage(from, "⏰ Enter delivery time (example: 6:30 AM)");
     return res.sendStatus(200);
   }
 
-  /* ===== TIME ===== */
+  /* ============ TIME ============ */
   if (s.step === "TIME") {
     s.time = text;
     s.step = "PAYMENT_CHOICE";
@@ -193,18 +212,21 @@ Choose quantity:
     return res.sendStatus(200);
   }
 
-  /* ===== PAYMENT CHOICE ===== */
+  /* ============ PAYMENT CHOICE ============ */
   if (s.step === "PAYMENT_CHOICE") {
     if (text === "1") {
       s.paymentMethod = "UPI";
-      s.step = "UPI_SCREENSHOT";
+      s.step = "WAIT_SCREENSHOT";
+
       await sendMessage(
         from,
-        `📲 Pay using UPI:
+        `📲 *UPI Payment*
 
+UPI ID:
 ${OWNER_UPI}
 
-After payment, please send screenshot.`
+Please complete payment in any UPI app
+and send payment screenshot here.`
       );
       return res.sendStatus(200);
     }
@@ -219,8 +241,8 @@ After payment, please send screenshot.`
     return res.sendStatus(200);
   }
 
-  /* ===== UPI SCREENSHOT ===== */
-  if (s.step === "UPI_SCREENSHOT") {
+  /* ============ SCREENSHOT ============ */
+  if (s.step === "WAIT_SCREENSHOT") {
     if (!image) {
       await sendMessage(from, "❌ Please send payment screenshot.");
       return res.sendStatus(200);
@@ -234,7 +256,7 @@ After payment, please send screenshot.`
   res.sendStatus(200);
 });
 
-/* ========== FINALIZE ORDER ========== */
+/* ================= FINALIZE ================= */
 
 async function finalizeOrder(from, s) {
   await saveToSheet({
@@ -247,7 +269,7 @@ async function finalizeOrder(from, s) {
     address: s.address,
     delivery: `${s.slot} ${s.time}`,
     payment: s.paymentMethod,
-    screenshot: s.screenshot || "",
+    screenshot: s.screenshot || ""
   });
 
   await sendMessage(
@@ -260,13 +282,13 @@ async function finalizeOrder(from, s) {
 💰 ₹${s.price}
 🚚 ${s.slot} ${s.time}
 
-🙏 Thank you for choosing *Bala Milk Store*`
+🙏 *Thank you for ordering from Bala’s Milk Dairy* 🥛`
   );
 
   delete sessions[from];
 }
 
-/* ========== VERIFY ========== */
+/* ================= VERIFY ================= */
 
 app.get("/webhook", (req, res) => {
   if (req.query["hub.verify_token"] === process.env.VERIFY_TOKEN) {
@@ -275,7 +297,7 @@ app.get("/webhook", (req, res) => {
   res.sendStatus(403);
 });
 
-/* ========== START ========== */
+/* ================= START ================= */
 
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
