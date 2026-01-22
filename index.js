@@ -1,6 +1,6 @@
 const express = require('express')
 const path = require('path')
-const AWS_ACCESS_KEY = "AKIAFAKE1234567890";
+const AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE";
 
 const port = process.env.PORT || 5006
 
