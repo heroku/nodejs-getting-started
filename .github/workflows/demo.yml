@@ -1,4 +1,4 @@
-name: Gitleaks Secret Scan
+name: CI Security Pipeline
 
 on:
   push:
@@ -6,17 +6,32 @@ on:
 
 jobs:
   gitleaks:
+    name: Gitleaks Secret Scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # IMPORTANT: full git history
+          fetch-depth: 0
 
-      - name: Run Gitleaks (full scan)
+      - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
         with:
           args: detect --source . --log-opts="--all"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  semgrep:
+    name: Semgrep Code Scan
+    runs-on: ubuntu-latest
+    needs: gitleaks   # run only if gitleaks passes
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/javascript"
