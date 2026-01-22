@@ -1,6 +1,6 @@
 const express = require('express')
 const path = require('path')
-const AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE";
+const GITHUB_TOKEN = "ghp_a1B2c3D4E5F6g7H8I9J0K1L2M3N4O5P6Q7R";
 
 const port = process.env.PORT || 5006
 
