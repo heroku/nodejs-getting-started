@@ -1,6 +1,6 @@
 const express = require('express')
 const path = require('path')
-const GITHUB_TOKEN = "ghp_a1B2c3D4E5F6g7H8I9J0K1L2M3N4O5P6Q7R";
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 const port = process.env.PORT || 5006
 
