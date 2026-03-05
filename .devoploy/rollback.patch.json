@@ -1,0 +1,17 @@
+{
+  "createdAt": "2026-03-05T20:53:06.124Z",
+  "entries": [
+    {
+      "filePath": "package.json",
+      "originalContent": "{\r\n  \"name\": \"nodejs-getting-started\",\r\n  \"private\": true,\r\n  \"description\": \"A sample Node.js app using Express\",\r\n  \"engines\": {\r\n    \"node\": \"20.x || 22.x || 24.x\"\r\n  },\r\n  \"main\": \"index.js\",\r\n  \"scripts\": {\r\n    \"start\": \"node index.js\",\r\n    \"test\": \"jest\"\r\n  },\r\n  \"dependencies\": {\r\n    \"ejs\": \"^4.0.1\",\r\n    \"express\": \"^5.2.1\"\r\n  },\r\n  \"devDependencies\": {\r\n    \"jest\": \"^30.2.0\"\r\n  },\r\n  \"repository\": {\r\n    \"type\": \"git\",\r\n    \"url\": \"https://github.com/heroku/nodejs-getting-started\"\r\n  },\r\n  \"keywords\": [\r\n    \"node\",\r\n    \"heroku\",\r\n    \"express\"\r\n  ],\r\n  \"license\": \"MIT\"\r\n}\r\n"
+    },
+    {
+      "filePath": "index.js",
+      "originalContent": "const express = require('express')\r\nconst path = require('path')\r\n\r\nconst port = process.env.PORT || 5006\r\n\r\nconst app = express()\r\n\r\napp.use(express.static(path.join(__dirname, 'public')))\r\napp.set('views', path.join(__dirname, 'views'))\r\napp.set('view engine', 'ejs')\r\n\r\napp.get('/', (req, res) => {\r\n  console.log(`Rendering 'pages/index' for route '/'`)\r\n  res.render('pages/index')\r\n})\r\n\r\nconst server = app.listen(port, () => {\r\n  console.log(`Listening on ${port}`)\r\n})\r\n\r\n// The number of seconds an idle Keep-Alive connection is kept open. This should be greater than the Heroku Router's\r\n// Keep-Alive idle timeout of 90 seconds:\r\n// - to ensure that the closing of idle connections is always initiated by the router and not the Node.js server\r\n// - to prevent a race condition if the router sends a request to the app just as Node.js is closing the connection\r\n// https://devcenter.heroku.com/articles/http-routing#keepalives\r\n// https://nodejs.org/api/http.html#serverkeepalivetimeout\r\nserver.keepAliveTimeout = 95 * 1000\r\n\r\nprocess.on('SIGTERM', async () => {\r\n  console.log('SIGTERM signal received: gracefully shutting down')\r\n  if (server) {\r\n    server.close(() => {\r\n      console.log('HTTP server closed')\r\n    })\r\n  }\r\n})\r\n"
+    },
+    {
+      "filePath": "vercel.json",
+      "originalContent": ""
+    }
+  ]
+}
