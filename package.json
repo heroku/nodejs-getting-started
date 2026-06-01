@@ -3,7 +3,8 @@
   "private": true,
   "description": "A sample Node.js app using Express",
   "engines": {
-    "node": "20.x || 22.x || 24.x"
+    "node": "20.x || 22.x || 24.x",
+    "npm": "11.*"
   },
   "main": "index.js",
   "scripts": {
