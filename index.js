@@ -33,4 +33,5 @@ process.on('SIGTERM', async () => {
       console.log('HTTP server closed')
     })
   }
+  // Cleanup after server close
 })
