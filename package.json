@@ -4,7 +4,7 @@
   "description": "A sample Node.js app using Express",
   "engines": {
     "node": "22.x || 24.x || 26.x",
-    "npm": "11.x"
+    "npm": "12.x"
   },
   "main": "index.js",
   "scripts": {
